@@ -97,7 +97,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: aquasecurity/trivy-action@0.28.0
+      # Action tierce épinglée par SHA de commit, et non par tag : un tag est
+      # mutable, son auteur peut le déplacer vers un autre commit après coup.
+      # Le commentaire donne la version lisible, et Dependabot sait mettre à
+      # jour les deux ensemble.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
           severity: HIGH,CRITICAL

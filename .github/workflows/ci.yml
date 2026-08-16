@@ -218,21 +218,11 @@ jobs:
         run: alembic upgrade head
 
       - name: Tests d'intégration et d'API
-        # pytest renvoie 5 quand il ne collecte aucun test. Les dossiers
-        # tests/integration et tests/api sont encore vides : on distingue ce
-        # cas d'un véritable échec, plutôt que de masquer les deux avec un
-        # `|| true` qui rendrait le job inutile le jour où un test casse.
-        # ⚠️ Cette tolérance est temporaire : la retirer dès les premiers tests.
-        run: |
-          set +e
-          pytest tests/integration tests/api --junitxml=junit-integration.xml
-          code=$?
-          set -e
-          if [ "$code" -eq 5 ]; then
-            echo "::notice::aucun test d'intégration ni d'API pour l'instant"
-            exit 0
-          fi
-          exit "$code"
+        # La tolérance au code de sortie 5 (« aucun test collecté ») a été
+        # retirée avec l'épopée A : les deux dossiers contiennent désormais des
+        # tests, et une collecte vide signalerait une régression de
+        # configuration plutôt qu'un état transitoire.
+        run: pytest tests/integration tests/api --junitxml=junit-integration.xml
 
       - uses: actions/upload-artifact@v4
         if: always()

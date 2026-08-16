@@ -55,9 +55,19 @@ revision: ## Crée une migration : make revision m="description"
 	$(COMPOSE) run --rm migrate alembic revision --autogenerate -m "$(m)"
 	@echo "⚠️  RELIRE la migration : --autogenerate ne détecte ni les CHECK ni les renommages."
 
+.PHONY: seed
+seed: ## Crée les comptes de démonstration (idempotent)
+	$(COMPOSE) run --rm api python -m app.seed
+
 .PHONY: test-back
 test-back: ## Tests backend ne nécessitant aucun service
 	cd backend && .venv/bin/python -m pytest -m "not migrations and not integration"
+
+.PHONY: test-back-all
+test-back-all: ## Toute la suite backend (exige PostgreSQL démarré)
+	cd backend && DATABASE_ADMIN_URL=postgresql://$${POSTGRES_USER:-entretiens}:$${POSTGRES_PASSWORD}@localhost:$${PORT_DB:-5432}/postgres \
+		DATABASE_URL=postgresql+psycopg://$${POSTGRES_USER:-entretiens}:$${POSTGRES_PASSWORD}@localhost:$${PORT_DB:-5432}/$${POSTGRES_DB:-entretiens} \
+		.venv/bin/python -m pytest
 
 .PHONY: test-migrations
 test-migrations: ## Tests de migration (exige PostgreSQL démarré)

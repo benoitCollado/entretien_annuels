@@ -1,10 +1,3 @@
-# Configuration de référence — c'est elle qui documente le projet et qui sert
-# de base à la production. Le développement n'en est qu'une surcharge, ce qui
-# garantit qu'aucun port de base de données ne part par accident en production.
-#
-#   docker compose up                      → référence + compose.override.yml (dev)
-#   docker compose -f compose.yml up       → référence seule
-#   docker compose -f compose.yml -f compose.prod.yml up -d   → production
 name: entretiens
 
 x-backend-build: &backend-build
@@ -103,9 +96,14 @@ services:
     image: ${FRONTEND_IMAGE:-entretiens/frontend}:${TAG:-dev}
     depends_on:
       - api
-    ports: ["${PORT_WEB:-8080}:80"]
     networks: [frontend]
     restart: unless-stopped
+    # Aucun `ports:` ici, pour la même raison que db et redis : la fusion
+    # Compose étant additive, un port déclaré dans la référence ne pourrait plus
+    # être retiré par surcharge. Or le conteneur écoute sur 80 en production
+    # (nginx) et sur 5173 en développement (Vite) : un mapping unique laisserait
+    # forcément un port mort dans l'un des deux modes. Chaque surcharge publie
+    # donc le sien.
 
 networks:
   frontend:

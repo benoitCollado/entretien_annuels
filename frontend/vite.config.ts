@@ -2,8 +2,6 @@ import { fileURLToPath, URL } from 'node:url'
 
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
-// `vitest/config` réexporte le `defineConfig` de Vite en y ajoutant le typage
-// du bloc `test`, ce qui évite un second fichier de configuration.
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
@@ -17,10 +15,14 @@ export default defineConfig({
     host: true,
     port: 5173,
     proxy: {
-      // Le front appelle /api/… : aucun CORS à gérer en développement.
       '/api': {
         target: process.env.VITE_API_TARGET ?? 'http://localhost:8000',
         changeOrigin: true,
+        // L'API expose /auth/login, pas /api/auth/login : le préfixe est une
+        // convention de routage du front, pas une partie du contrat.
+        // nginx fait la même réécriture en production grâce au slash final de
+        // `proxy_pass http://api:8000/` ; Vite, lui, ne l'implique pas.
+        rewrite: (chemin) => chemin.replace(/^\/api/, ''),
       },
     },
   },

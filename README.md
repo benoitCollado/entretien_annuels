@@ -4,32 +4,53 @@ Projet CDA · FastAPI synchrone · Vue 3 · PostgreSQL 16 · Redis · Docker
 
 ## État du dépôt
 
-**Socle d'infrastructure uniquement.** L'arborescence, la conteneurisation, le
-CI/CD et le harnais de tests de migration sont en place. Les fichiers des
-couches applicatives sont des **amorces** : chacun porte son rôle et sa user
-story, aucun n'est implémenté.
+**Socle + épopée A** (authentification et administration des comptes).
 
-| En place | À venir |
+| Implémenté | À venir |
 |---|---|
-| Arborescence des 4 couches | Modèles, schémas, repositories, règles, processus |
-| 3 fichiers Compose, 2 Dockerfiles | Migrations |
-| CI/CD GitHub Actions | Écrans frontend |
-| Harnais de tests de migration | |
-| Outillage qualité back et front | |
+| Socle : arborescence, Compose, CI/CD, tests de migration | Épopée B — trames et campagnes (US-03 à US-05) |
+| **US-01** — connexion argon2id + JWT, révocation par `version_jeton` | Épopée C — conduite de l'entretien (US-06 à US-14) |
+| **US-02** — CRUD comptes, rôles, hiérarchie, RBAC et portée | Épopée D — restitution (US-15, US-16) |
+| Front : écran de connexion et liste des utilisateurs | Écrans des lots suivants |
+
+113 tests backend (42 unitaires · 12 migrations · 25 intégration · 34 API) et
+16 tests frontend.
 
 ## Démarrage
 
 ```bash
 cp .env.example .env
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # → SECRET_KEY
-make infra          # PostgreSQL + Redis
+
+make up             # db, redis, migrate, api, web
+make seed           # comptes de démonstration
+```
+
+| Service | URL |
+|---|---|
+| Front (Vite, rechargement à chaud) | http://localhost:5173 |
+| API — documentation interactive | http://localhost:8000/docs |
+| PostgreSQL | `localhost:5432` |
+
+**Comptes de démonstration** — mot de passe commun `MotDePasseDemo2026!` :
+
+| Adresse | Rôle | Ce qu'il voit |
+|---|---|---|
+| `admin@example.com` | ADMIN | tous les utilisateurs, toutes les actions |
+| `rh@example.com` | RH | tous les utilisateurs, sauf archivage |
+| `manager@example.com` | MANAGER | **son équipe seulement** |
+| `collaborateur@example.com` | COLLABORATEUR | 403 sur la liste |
+
+Le contraste entre ces quatre comptes est le scénario de démonstration du
+§6.4 : il montre en une minute la différence entre RBAC et contrôle de portée.
+
+### Sans Docker
+
+```bash
+make infra          # PostgreSQL + Redis seuls
 make install        # venv Python + npm install
 make check          # lint et tests, exactement ce que la CI exécute
 ```
-
-> Le service `api` ne démarrera pas tant que `backend/app/main.py` est une
-> amorce : c'est attendu. `make infra` suffit pour travailler sur les
-> migrations.
 
 ## Architecture
 

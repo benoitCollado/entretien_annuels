@@ -1,6 +1,3 @@
-# En tête, et de loin le plus important : ~300 Mo de contexte transférés à
-# chaque build, et des binaires natifs (esbuild, rollup) compilés pour l'hôte
-# qui écraseraient ceux produits par `npm ci` dans l'image Linux.
 node_modules/
 
 dist/

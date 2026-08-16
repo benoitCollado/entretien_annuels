@@ -1,9 +1,3 @@
-# Production — à combiner explicitement avec la référence :
-#   docker compose -f compose.yml -f compose.prod.yml up -d --no-build
-#
-# Aucune source n'est présente sur le serveur : seules des images publiées et
-# taguées par SHA de commit sont consommées.
-
 x-logging: &logging
   driver: json-file
   options:
@@ -52,13 +46,12 @@ services:
   web:
     image: ${FRONTEND_IMAGE:?}:${TAG:?}
     pull_policy: always
+    # Le conteneur de production sert le build statique par nginx, sur le port
+    # 80. C'est le seul point d'entrée publié de toute la stack.
+    ports: ["${PORT_WEB:-8080}:80"]
     security_opt: ["no-new-privileges:true"]
     logging: *logging
 
 volumes:
   pgdata:
 
-# Note : la clé `build:` de compose.yml reste héritée sur api et migrate — la
-# fusion Compose ne permet pas de supprimer une clé. Comme `image:` désigne une
-# image distante et que le déploiement enchaîne `pull` puis `up -d --no-build`,
-# aucune construction n'a lieu sur le serveur.
