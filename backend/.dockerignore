@@ -1,0 +1,36 @@
+# Secrets — un `COPY . .` fige un .env dans une couche d'image, et la couche
+# reste extractible avec `docker save` même si un RUN le supprime ensuite.
+.env
+.env.*
+*.pem
+*.key
+
+# Environnements et caches locaux
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Artefacts de test
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+report.xml
+junit*.xml
+
+# Inutile dans l'image — .git/ embarquerait aussi tout l'historique, donc un
+# éventuel secret committé puis retiré.
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+README.md
+
+# tests/ reste volontairement dans le contexte : la cible `dev` du Dockerfile
+# les copie pour lancer pytest dans le conteneur. C'est le Dockerfile qui
+# sélectionne ce qui entre dans l'image `runtime`, pas ce fichier.

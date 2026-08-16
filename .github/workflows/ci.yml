@@ -1,0 +1,291 @@
+# Étapes « lint » et « test » du pipeline (§10.1).
+#
+# Ce workflow est appelable (`workflow_call`) par cd.yml, ce qui reproduit
+# l'enchaînement lint → test → build de GitLab dans un seul graphe visible.
+#
+# Il ne déclare QUE `contents: read` et n'utilise aucun secret : une pull
+# request venue d'un fork est ainsi structurellement incapable de publier une
+# image ou de déclencher un déploiement.
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+
+jobs:
+  # ------------------------------------------------------------------ LINT
+  backend-lint:
+    name: Backend — lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Installation
+        run: pip install -e ".[dev]"
+
+      - name: Ruff — analyse
+        run: ruff check .
+
+      - name: Ruff — format
+        run: ruff format --check .
+
+      - name: Alembic — une seule tête
+        # Doublon volontaire du test unitaire : l'erreur est ainsi visible dès
+        # l'étape de lint, avec un message immédiatement lisible.
+        run: |
+          nombre=$(alembic heads | grep -c . || true)
+          if [ "$nombre" -gt 1 ]; then
+            echo "::error::$nombre têtes Alembic — fusionner avec 'alembic merge'"
+            alembic heads
+            exit 1
+          fi
+
+  frontend-lint:
+    name: Frontend — lint et types
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Vérification des types
+        run: npm run type-check
+
+  # ------------------------------------------------------------------ TEST
+  backend-test-unit:
+    name: Backend — tests unitaires
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - run: pip install -e ".[dev]"
+
+      - name: Tests sans service
+        # `-m "not migrations and not integration"` : ce job doit rester
+        # instantané et ne dépendre d'aucune infrastructure.
+        run: |
+          pytest -m "not migrations and not integration" \
+            --cov=app --cov-report=term --cov-report=xml \
+            --junitxml=junit-unit.xml
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-unit-py${{ matrix.python-version }}
+          path: backend/junit-unit.xml
+
+  backend-test-migrations:
+    name: Backend — tests de migration
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        # ⚠️ Sans --health-cmd, GitHub Actions n'attend PAS que PostgreSQL
+        # accepte les connexions : le job échoue par intermittence.
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+        # ⚠️ Le job tourne SUR le runner, pas dans un conteneur : le service
+        # n'est joignable que par un port publié, sur localhost. C'est la
+        # différence avec GitLab, où l'alias réseau `db` suffisait.
+        ports:
+          - 5432:5432
+    env:
+      # Base de maintenance : les tests créent puis détruisent leurs propres
+      # bases jetables.
+      DATABASE_ADMIN_URL: postgresql://test:test@localhost:5432/postgres
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/postgres
+      SECRET_KEY: cle-de-ci-non-utilisee-en-production-32c
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - run: pip install -e ".[dev]"
+
+      - name: Migrations — lignée, application, réversibilité, dérive
+        run: pytest tests/migrations -v --junitxml=junit-migrations.xml
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-migrations
+          path: backend/junit-migrations.xml
+
+  backend-test-integration:
+    name: Backend — intégration et API
+    runs-on: ubuntu-latest
+    # Inutile d'exécuter 80 tests d'API si les migrations sont cassées.
+    needs: [backend-test-migrations]
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: entretiens_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd "pg_isready -U test -d entretiens_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+        ports:
+          - 6379:6379
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/entretiens_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: cle-de-ci-non-utilisee-en-production-32c
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - run: pip install -e ".[dev]"
+
+      - name: Application des migrations
+        run: alembic upgrade head
+
+      - name: Tests d'intégration et d'API
+        # pytest renvoie 5 quand il ne collecte aucun test. Les dossiers
+        # tests/integration et tests/api sont encore vides : on distingue ce
+        # cas d'un véritable échec, plutôt que de masquer les deux avec un
+        # `|| true` qui rendrait le job inutile le jour où un test casse.
+        # ⚠️ Cette tolérance est temporaire : la retirer dès les premiers tests.
+        run: |
+          set +e
+          pytest tests/integration tests/api --junitxml=junit-integration.xml
+          code=$?
+          set -e
+          if [ "$code" -eq 5 ]; then
+            echo "::notice::aucun test d'intégration ni d'API pour l'instant"
+            exit 0
+          fi
+          exit "$code"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-integration
+          path: backend/junit-integration.xml
+
+  frontend-test:
+    name: Frontend — tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run test
+
+  # -------------------------------------------------------- SÉCURITÉ (deps)
+  security-dependances:
+    name: Audit des dépendances
+    runs-on: ubuntu-latest
+    # `continue-on-error` remplace `allow_failure: true`, avec une nuance :
+    # GitHub marque le job en succès, la trouvaille deviendrait invisible.
+    # D'où l'écriture du rapport dans le résumé d'exécution.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: pip-audit
+        run: |
+          pip install pip-audit
+          pip install -e ./backend
+          echo '### Audit des dépendances Python' >> "$GITHUB_STEP_SUMMARY"
+          pip-audit --desc --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: npm audit
+        working-directory: frontend
+        run: |
+          echo '### Audit des dépendances npm' >> "$GITHUB_STEP_SUMMARY"
+          npm audit --omit=dev >> "$GITHUB_STEP_SUMMARY" || true

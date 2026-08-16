@@ -1,0 +1,68 @@
+# Analyses de sécurité récurrentes.
+#
+# Une CVE apparaît sans qu'aucun commit ne soit poussé : l'analyse doit donc
+# être périodique, et pas seulement déclenchée par le pipeline.
+name: Sécurité
+
+on:
+  schedule:
+    # Tous les lundis à 6 h UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependances:
+    name: Dépendances
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: pip-audit
+        run: |
+          pip install pip-audit
+          pip install -e ./backend
+          echo '### Dépendances Python' >> "$GITHUB_STEP_SUMMARY"
+          pip-audit --desc --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: npm audit
+        working-directory: frontend
+        run: |
+          npm ci
+          echo '### Dépendances npm' >> "$GITHUB_STEP_SUMMARY"
+          npm audit >> "$GITHUB_STEP_SUMMARY" || true
+
+  systeme-de-fichiers:
+    name: Analyse du dépôt
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: sarif
+          output: trivy-fs.sarif
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs

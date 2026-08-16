@@ -1,0 +1,64 @@
+# Production — à combiner explicitement avec la référence :
+#   docker compose -f compose.yml -f compose.prod.yml up -d --no-build
+#
+# Aucune source n'est présente sur le serveur : seules des images publiées et
+# taguées par SHA de commit sont consommées.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    logging: *logging
+
+  redis:
+    logging: *logging
+
+  migrate:
+    # `${TAG:?}` fait échouer Compose si TAG n'est pas défini : c'est le
+    # garde-fou qui matérialise « jamais latest » (§10.1) au niveau de
+    # l'orchestration, et pas seulement dans la CI.
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE est obligatoire}:${TAG:?TAG doit être le SHA de commit}
+    pull_policy: always
+    logging: *logging
+
+  api:
+    image: ${BACKEND_IMAGE:?}:${TAG:?}
+    pull_policy: always
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+       "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    environment:
+      ENVIRONNEMENT: production
+      NIVEAU_LOG: INFO
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging: *logging
+    # Aucun volume de code.
+
+  web:
+    image: ${FRONTEND_IMAGE:?}:${TAG:?}
+    pull_policy: always
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
+volumes:
+  pgdata:
+
+# Note : la clé `build:` de compose.yml reste héritée sur api et migrate — la
+# fusion Compose ne permet pas de supprimer une clé. Comme `image:` désigne une
+# image distante et que le déploiement enchaîne `pull` puis `up -d --no-build`,
+# aucune construction n'a lieu sur le serveur.

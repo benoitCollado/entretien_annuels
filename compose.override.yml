@@ -1,0 +1,67 @@
+# Surcharge de développement — chargée AUTOMATIQUEMENT par `docker compose up`,
+# sans avoir à la nommer.
+#
+# Ce qu'elle change par rapport à la référence :
+#   1. cible de build `runtime` → `dev` (dépendances de test incluses) ;
+#   2. publication des ports db, redis et api sur l'hôte ;
+#   3. montage du code en volume, donc rechargement à chaud ;
+#   4. `web` passe de nginx au serveur de développement Vite.
+#
+# ⚠️ La fusion Compose est additive sur les listes : un `ports:` déclaré ici
+# s'AJOUTE à celui de la référence, il ne le remplace pas. On ne peut jamais
+# retirer une clé par surcharge — d'où l'absence totale de `ports:` sur db et
+# redis dans compose.yml.
+
+services:
+  # ⚠️ Docker ne peut pas publier un port depuis un réseau `internal: true`.
+  # Publier 5432 sur l'hôte suppose donc de raccorder db et redis à un second
+  # réseau, non interne, qui n'existe QUE dans cette surcharge. La
+  # configuration de référence reste inchangée : en production, ces deux
+  # services demeurent strictement inaccessibles depuis l'extérieur.
+  db:
+    networks: [backend, outils]
+    ports: ["${PORT_DB:-5432}:5432"]
+
+  redis:
+    networks: [backend, outils]
+    ports: ["${PORT_REDIS:-6379}:6379"]
+
+  migrate:
+    build:
+      target: dev
+
+  api:
+    build:
+      target: dev
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+       "--reload", "--reload-dir", "/app/app"]
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
+      - ./backend/tests:/app/tests
+      - ./backend/alembic.ini:/app/alembic.ini:ro
+    environment:
+      ENVIRONNEMENT: development
+      NIVEAU_LOG: DEBUG
+    ports: ["${PORT_API:-8000}:8000"]
+
+  web:
+    build:
+      target: dev
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+    volumes:
+      - ./frontend:/app
+      # Volume anonyme : masque le node_modules de l'hôte, dont les binaires
+      # natifs sont compilés pour macOS et casseraient dans l'image Linux.
+      - /app/node_modules
+    ports: ["${PORT_WEB_DEV:-5173}:5173"]
+    environment:
+      VITE_API_URL: /api
+
+networks:
+  # Réseau de confort, réservé au développement : il rend PostgreSQL et Redis
+  # joignables depuis l'hôte (psql, DBeaver, tests de migration lancés hors
+  # conteneur). Il n'existe dans aucune autre configuration.
+  outils:
+    driver: bridge

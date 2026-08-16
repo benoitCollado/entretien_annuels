@@ -1,0 +1,9 @@
+# Les contextes de build réels sont ./backend et ./frontend : la racine n'est
+# jamais un contexte. Ce fichier n'est qu'un filet si quelqu'un lance
+# `docker build .` depuis ici.
+.git/
+.env
+.env.*
+node_modules/
+__pycache__/
+.venv/

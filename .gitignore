@@ -1,0 +1,65 @@
+# ---------- Secrets ----------
+# Le fichier à ne jamais committer : SECRET_KEY, mots de passe base et Redis.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+certs/
+secrets/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.python-version
+
+# ---------- Caches d'outillage ----------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# ---------- Artefacts de test ----------
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+report.xml
+junit*.xml
+
+# ---------- Node / frontend ----------
+# node_modules contient des binaires compilés pour l'OS et l'architecture de la
+# machine : committés puis copiés dans une image Linux, ils cassent au runtime.
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+.eslintcache
+*.tsbuildinfo
+frontend/coverage/
+# package-lock.json n'est PAS ignoré : `npm ci` le refuse sinon.
+
+# ---------- Données ----------
+pgdata/
+backups/*.sql
+!backups/.gitkeep
+
+# ---------- Éditeurs / OS ----------
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+
+# ---------- Ce qu'il ne faut SURTOUT PAS ignorer ----------
+# backend/migrations/versions/*.py : ce sont des sources versionnées. Une règle
+#   `versions/` trop large les avalerait — la CI resterait verte (base vierge,
+#   rien à migrer) et le déploiement échouerait.
+# frontend/public/, alembic.ini, compose*.yml : idem.
+
+docs/

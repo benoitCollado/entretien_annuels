@@ -1,0 +1,85 @@
+[project]
+name = "entretiens-backend"
+version = "0.1.0"
+description = "API de gestion des entretiens annuels et professionnels"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "email-validator>=2.2",
+    "sqlalchemy>=2.0.36",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.14",
+    "redis>=5.2",
+    "pyjwt>=2.10",
+    "argon2-cffi>=23.1",
+    # UUID v7 (§4.4) : absent de la bibliothèque standard avant Python 3.14.
+    # Utiliser `uuid_utils.compat`, qui renvoie de vrais `uuid.UUID` — le module
+    # racine expose un type maison que SQLAlchemy refuse.
+    "uuid-utils>=0.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "httpx>=0.27",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
+# B008 : `Depends(...)` en valeur par défaut est l'idiome FastAPI.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Les migrations sont générées puis relues : lignes longues tolérées sur les
+# définitions de colonnes.
+"migrations/versions/*.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "migrations: exige PostgreSQL et le droit CREATE DATABASE",
+    "integration: exige PostgreSQL",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
+# ---------------------------------------------------------------------------
+# Mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true

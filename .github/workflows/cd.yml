@@ -1,0 +1,182 @@
+# Étapes « build », « security » et « deploy » du pipeline (§10.1).
+#
+# Séparé de ci.yml pour une raison de sécurité, pas de confort : c'est le seul
+# workflow qui dispose de `packages: write` et des secrets de déploiement. Un
+# workflow déclenché par une pull request ne peut donc pas publier d'image.
+name: CD
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  # Jamais d'annulation en vol : un déploiement interrompu laisse la cible dans
+  # un état indéterminé.
+  cancel-in-progress: false
+
+jobs:
+  # Rejoue lint et tests : équivalent des étapes amont du pipeline GitLab.
+  ci:
+    name: Qualité
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  build:
+    name: Image ${{ matrix.composant }}
+    needs: [ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - composant: backend
+            contexte: ./backend
+            cible: runtime
+          - composant: frontend
+            contexte: ./frontend
+            cible: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      # Remplace `docker:dind` de GitLab : le runner a déjà Docker, et buildx
+      # apporte en prime un cache de couches que GitLab n'offre pas sans
+      # registre intermédiaire.
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # ⚠️ GHCR exige des noms en minuscules et `github.repository` conserve
+          # la casse : cette action normalise, un `docker build -t` manuel non.
+          images: ghcr.io/${{ github.repository }}/${{ matrix.composant }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=ref,event=branch
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.contexte }}
+          target: ${{ matrix.cible }}
+          push: true
+          pull: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.composant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.composant }}
+          provenance: true
+          sbom: true
+
+  scan-images:
+    name: Analyse des images
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    continue-on-error: true
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: sarif
+          output: trivy.sarif
+
+      # Le job étant tolérant à l'échec, sans cette remontée la trouvaille
+      # serait invisible. Publiée en SARIF, elle persiste dans l'onglet
+      # Security même quand le job est vert.
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-backend
+
+  deploy-staging:
+    name: Déploiement — staging
+    needs: [build]
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Empreinte de l'hôte
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Mise à jour de la stack
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -se <<'EOF'
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+            export TAG="${{ github.sha }}"
+            export BACKEND_IMAGE="ghcr.io/${{ github.repository }}/backend"
+            export FRONTEND_IMAGE="ghcr.io/${{ github.repository }}/frontend"
+            docker compose -f compose.yml -f compose.prod.yml pull
+            # Migration AVANT le démarrage, dans un conteneur éphémère (§10.2).
+            docker compose -f compose.yml -f compose.prod.yml run --rm migrate
+            docker compose -f compose.yml -f compose.prod.yml up -d --no-build --remove-orphans
+            docker image prune -f
+          EOF
+
+  deploy-production:
+    name: Déploiement — production
+    needs: [build, scan-images]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # `when: manual` n'a pas d'équivalent direct : l'approbation passe par les
+    # « required reviewers » configurés sur l'environnement, ce qui est un vrai
+    # contrôle d'accès et non un simple bouton.
+    # ⚠️ Cette protection n'est disponible que sur dépôt public, ou sur un plan
+    # Team/Enterprise pour un dépôt privé.
+    environment:
+      name: production
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Empreinte de l'hôte
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Mise à jour de la stack
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -se <<'EOF'
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+            export TAG="${{ github.sha }}"
+            export BACKEND_IMAGE="ghcr.io/${{ github.repository }}/backend"
+            export FRONTEND_IMAGE="ghcr.io/${{ github.repository }}/frontend"
+            docker compose -f compose.yml -f compose.prod.yml pull
+            docker compose -f compose.yml -f compose.prod.yml run --rm migrate
+            docker compose -f compose.yml -f compose.prod.yml up -d --no-build --remove-orphans
+            docker image prune -f
+          EOF

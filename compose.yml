@@ -1,0 +1,119 @@
+# Configuration de référence — c'est elle qui documente le projet et qui sert
+# de base à la production. Le développement n'en est qu'une surcharge, ce qui
+# garantit qu'aucun port de base de données ne part par accident en production.
+#
+#   docker compose up                      → référence + compose.override.yml (dev)
+#   docker compose -f compose.yml up       → référence seule
+#   docker compose -f compose.yml -f compose.prod.yml up -d   → production
+name: entretiens
+
+x-backend-build: &backend-build
+  context: ./backend
+  target: runtime
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY est obligatoire}
+  ENVIRONNEMENT: ${ENVIRONNEMENT:-development}
+  NIVEAU_LOG: ${NIVEAU_LOG:-INFO}
+  ORIGINES_CORS: ${ORIGINES_CORS:-http://localhost:5173}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Sans healthcheck, `depends_on` attend seulement que le conteneur démarre,
+    # pas que PostgreSQL accepte les connexions.
+    # Le double dollar est échappé pour Compose et développé par le shell DANS
+    # le conteneur : avec un simple $, Compose interpolerait depuis le .env de
+    # l'hôte et la sonde deviendrait un littéral vide.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    networks: [backend]
+    restart: unless-stopped
+    # Aucun `ports:` — §10.5. La publication est ajoutée par la surcharge dev.
+
+  redis:
+    image: redis:7-alpine
+    # Mot de passe même en réseau interne, et persistance désactivée : Redis ne
+    # porte que des compteurs de rate limiting, aucune donnée RH (§6.3).
+    command: >
+      redis-server --requirepass ${REDIS_PASSWORD}
+                   --save ""
+                   --appendonly no
+                   --maxmemory 128mb
+                   --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a $${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [backend]
+    restart: unless-stopped
+    # Aucun `ports:`
+
+  # Service one-shot : les migrations ne sont JAMAIS dans l'entrypoint de l'API
+  # (§10.2). Avec deux réplicas, deux migrations concurrentes s'exécuteraient et
+  # un échec deviendrait un crash-loop illisible.
+  migrate:
+    build: *backend-build
+    image: ${BACKEND_IMAGE:-entretiens/backend}:${TAG:-dev}
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  api:
+    build: *backend-build
+    image: ${BACKEND_IMAGE:-entretiens/backend}:${TAG:-dev}
+    environment: *backend-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose: ["8000"]
+    # Seul service présent sur les deux réseaux : c'est l'unique point de
+    # passage entre le web et les données.
+    networks: [backend, frontend]
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      target: prod
+    image: ${FRONTEND_IMAGE:-entretiens/frontend}:${TAG:-dev}
+    depends_on:
+      - api
+    ports: ["${PORT_WEB:-8080}:80"]
+    networks: [frontend]
+    restart: unless-stopped
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    # Aucun accès sortant, aucune exposition possible vers l'hôte.
+    internal: true
+
+volumes:
+  pgdata:
