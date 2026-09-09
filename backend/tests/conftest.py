@@ -1,41 +1,36 @@
-"""Fixtures globales.
-
-Stratégie d'isolation : **une base jetable par session de test**, migrée une
-seule fois, puis **une transaction annulée après chaque test**. Nettement plus
-rapide que de recréer le schéma à chaque test, tout en garantissant qu'un test
-ne voit jamais les écritures d'un autre.
-
-Le point délicat est que `get_db` commite en fin de requête. La session de test
-est donc ouverte avec `join_transaction_mode="create_savepoint"` : les commits
-de l'application deviennent des points de reprise imbriqués, et le `rollback()`
-final de la transaction externe les annule tous.
-"""
-
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
-from uuid import uuid4
-
-import psycopg
-import pytest
-from alembic import command
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine
-from sqlalchemy.orm import Session
-
-from app.config import Parametres
-from app.core.dependances import get_db
-from app.core.securite import hacher_mot_de_passe
-from app.main import creer_application
-from app.models.utilisateur import Utilisateur
-from app.repositories.role_repository import RoleRepository
-from app.repositories.utilisateur_repository import UtilisateurRepository
-from tests.migrations.conftest import config_alembic, remplacer_base, url_psycopg
 
 MOT_DE_PASSE_TEST = "MotDePasseDeTest2026!"
 SECRET_KEY_TEST = "cle-de-test-de-plus-de-32-caracteres-ok"
+
+os.environ.setdefault("SECRET_KEY", SECRET_KEY_TEST)
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://ignore:ignore@localhost:5432/ignore")
+
+from collections.abc import Iterator  # noqa: E402
+from uuid import uuid4  # noqa: E402
+
+import psycopg  # noqa: E402
+import pytest  # noqa: E402
+from alembic import command  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import Engine, create_engine  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+
+from app.config import Parametres  # noqa: E402
+from app.core.dependances import get_db  # noqa: E402
+from app.core.securite import creer_jeton, hacher_mot_de_passe  # noqa: E402
+from app.main import creer_application  # noqa: E402
+from app.models.utilisateur import Utilisateur  # noqa: E402
+from app.repositories.role_repository import RoleRepository  # noqa: E402
+from app.repositories.utilisateur_repository import UtilisateurRepository  # noqa: E402
+from tests.migrations.conftest import (  # noqa: E402
+    config_alembic,
+    remplacer_base,
+    url_psycopg,
+)
 
 
 def _url_administration() -> str | None:
@@ -48,7 +43,6 @@ def _url_administration() -> str | None:
 
 @pytest.fixture(scope="session")
 def url_base_test() -> Iterator[str]:
-    """Base dédiée à la session de test, migrée puis détruite."""
     url_admin = _url_administration()
     if url_admin is None:
         pytest.skip("DATABASE_URL ou DATABASE_ADMIN_URL absent : PostgreSQL requis")
@@ -56,7 +50,7 @@ def url_base_test() -> Iterator[str]:
     nom = f"test_{uuid4().hex[:12]}"
     try:
         connexion = psycopg.connect(url_admin, autocommit=True, connect_timeout=5)
-    except psycopg.OperationalError as exc:  # pragma: no cover - dépend de l'hôte
+    except psycopg.OperationalError as exc:  # pragma: no cover
         pytest.skip(f"PostgreSQL injoignable : {exc}")
 
     with connexion:
@@ -106,12 +100,6 @@ def parametres() -> Parametres:
 
 @pytest.fixture(autouse=True)
 def _parametres_de_test(monkeypatch: pytest.MonkeyPatch, parametres: Parametres) -> None:
-    """Force les paramètres de test partout où ils sont lus.
-
-    `obtenir_parametres` est mis en cache par `lru_cache` : sans cette
-    substitution, la clé de signature réelle serait utilisée et les jetons créés
-    dans les tests ne seraient pas vérifiables.
-    """
     for module in (
         "app.config",
         "app.core.securite",
@@ -121,12 +109,34 @@ def _parametres_de_test(monkeypatch: pytest.MonkeyPatch, parametres: Parametres)
         monkeypatch.setattr(f"{module}.obtenir_parametres", lambda: parametres, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _sans_rate_limit(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    if request.node.get_closest_marker("rate_limit"):
+        return
+    monkeypatch.setattr("app.core.rate_limit.exiger_sous_limite", lambda *a, **k: None)
+    monkeypatch.setattr("app.core.rate_limit.reinitialiser", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _fabrique_de_sessions_de_test(monkeypatch: pytest.MonkeyPatch, session: Session) -> None:
+    fabrique = sessionmaker(bind=session.connection(), join_transaction_mode="create_savepoint")
+    monkeypatch.setattr("app.database.obtenir_fabrique_sessions", lambda: fabrique)
+
+
 @pytest.fixture
 def application(session: Session, parametres: Parametres) -> FastAPI:
     app = creer_application(parametres)
-    # L'application partage la session du test : ses écritures sont annulées
-    # avec la transaction externe.
-    app.dependency_overrides[get_db] = lambda: session
+
+    def session_de_test() -> Iterator[Session]:
+        point = session.begin_nested()
+        try:
+            yield session
+            point.commit()
+        except Exception:
+            point.rollback()
+            raise
+
+    app.dependency_overrides[get_db] = session_de_test
     return app
 
 
@@ -136,12 +146,8 @@ def client(application: FastAPI) -> Iterator[TestClient]:
         yield client
 
 
-# ---------------------------------------------------------------------------
-# Fabriques de données
-# ---------------------------------------------------------------------------
 @pytest.fixture
 def creer_compte(session: Session):
-    """Crée un utilisateur persistant avec les rôles demandés."""
     compteur = {"n": 0}
 
     def _creer(
@@ -173,12 +179,19 @@ def creer_compte(session: Session):
 
 
 @pytest.fixture
-def entetes_de(client: TestClient):
-    """En-tête d'autorisation pour un compte donné."""
+def entetes_de(session: Session):
+    """Jeton d'un compte, présenté en en-tête.
+
+    La connexion pose désormais un cookie sur le client, partagé par tous les
+    appels. Frapper /auth/login ici ferait qu'un test manipulant plusieurs
+    comptes verrait le dernier connecté l'emporter sur l'en-tête attendu. Le
+    jeton est donc forgé directement, ce qui garde chaque en-tête indépendant.
+    """
 
     def _entetes(email: str, mot_de_passe: str = MOT_DE_PASSE_TEST) -> dict[str, str]:
-        reponse = client.post("/auth/login", json={"email": email, "mot_de_passe": mot_de_passe})
-        assert reponse.status_code == 200, reponse.text
-        return {"Authorization": f"Bearer {reponse.json()['access_token']}"}
+        utilisateur = UtilisateurRepository(session).get_par_email(email)
+        assert utilisateur is not None, f"compte introuvable : {email}"
+        jeton, _ = creer_jeton(utilisateur.id, utilisateur.version_jeton)
+        return {"Authorization": f"Bearer {jeton}"}
 
     return _entetes

@@ -1,25 +1,3 @@
-"""socle utilisateur role
-
-Revision ID: 8b0c85e36e9a
-Revises:
-Create Date: 2026-08-16 19:38:08.799769
-
-RELECTURE EFFECTUÉE — corrections apportées à la sortie de `--autogenerate` :
-
-  1. **`CREATE EXTENSION citext` ajouté.** Alembic ne génère jamais les
-     extensions. Sans cette ligne, `postgresql.CITEXT()` échoue sur une base
-     vierge : le type n'existe pas encore. Symétriquement, `DROP EXTENSION` en
-     fin de downgrade — après les tables, sinon PostgreSQL refuse tant qu'une
-     colonne l'utilise.
-  2. Mise en forme et commentaires ; aucune autre modification de structure.
-
-Constaté à la relecture : la contrainte CHECK `ck_utilisateur_pas_son_manager`
-**a bien été détectée** par Alembic 1.19 (plugin `checkconstraint_byname`), car
-elle est nommée. Le §10.4 du dossier de conception, écrit pour des versions
-antérieures, est donc à nuancer sur ce point — mais la relecture reste
-nécessaire pour les extensions, les renommages et les triggers.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -35,7 +13,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Ajout manuel : requis par le type CITEXT de la colonne `email`.
     op.execute("CREATE EXTENSION IF NOT EXISTS citext")
 
     op.create_table(
@@ -84,8 +61,6 @@ def upgrade() -> None:
             "manager_id IS NULL OR manager_id <> id",
             name=op.f("ck_utilisateur_pas_son_manager"),
         ),
-        # SET NULL et non CASCADE : archiver un manager ne doit jamais faire
-        # disparaître son équipe.
         sa.ForeignKeyConstraint(
             ["manager_id"],
             ["utilisateur.id"],
@@ -95,7 +70,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_utilisateur")),
         sa.UniqueConstraint("email", name=op.f("uq_utilisateur_email")),
     )
-    # PostgreSQL n'indexe pas les clés étrangères automatiquement (§4.3).
     op.create_index(op.f("ix_utilisateur_manager_id"), "utilisateur", ["manager_id"], unique=False)
     op.create_table(
         "role_permission",
@@ -149,6 +123,4 @@ def downgrade() -> None:
     op.drop_table("role")
     op.drop_table("permission")
 
-    # Après les tables : PostgreSQL refuse de supprimer une extension tant
-    # qu'une colonne en utilise le type.
     op.execute("DROP EXTENSION IF EXISTS citext")

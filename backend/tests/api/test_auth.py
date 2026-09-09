@@ -1,5 +1,3 @@
-"""Authentification de bout en bout — US-01."""
-
 from __future__ import annotations
 
 import pytest
@@ -20,9 +18,53 @@ class TestConnexion:
         )
         assert reponse.status_code == 200
         corps = reponse.json()
-        assert corps["token_type"] == "bearer"
-        assert corps["expires_in"] > 0
-        assert corps["access_token"]
+        assert corps["email"] == "jean@example.com"
+
+    def test_le_jeton_ne_figure_pas_dans_le_corps(self, client: TestClient, creer_compte) -> None:
+        creer_compte(email="corps@example.com")
+        reponse = client.post(
+            "/auth/login",
+            json={"email": "corps@example.com", "mot_de_passe": MOT_DE_PASSE_TEST},
+        )
+
+        assert "access_token" not in reponse.text
+        assert "mot_de_passe" not in reponse.text
+
+    def test_le_cookie_est_httponly_et_samesite(self, client: TestClient, creer_compte) -> None:
+        creer_compte(email="cookie@example.com")
+        reponse = client.post(
+            "/auth/login",
+            json={"email": "cookie@example.com", "mot_de_passe": MOT_DE_PASSE_TEST},
+        )
+
+        entete = reponse.headers["set-cookie"].lower()
+        assert "jeton=" in entete
+        assert "httponly" in entete
+        assert "samesite=strict" in entete
+        assert "path=/" in entete
+
+    def test_le_cookie_suffit_pour_les_appels_suivants(
+        self, client: TestClient, creer_compte
+    ) -> None:
+        creer_compte(email="suite@example.com")
+        client.post(
+            "/auth/login",
+            json={"email": "suite@example.com", "mot_de_passe": MOT_DE_PASSE_TEST},
+        )
+
+        # Aucun en-tête d'autorisation : seul le cookie est présenté.
+        reponse = client.get("/auth/me")
+        assert reponse.status_code == 200
+        assert reponse.json()["email"] == "suite@example.com"
+
+    def test_un_echec_ne_pose_aucun_cookie(self, client: TestClient, creer_compte) -> None:
+        creer_compte(email="echec@example.com")
+        reponse = client.post(
+            "/auth/login", json={"email": "echec@example.com", "mot_de_passe": "faux"}
+        )
+
+        assert reponse.status_code == 401
+        assert "set-cookie" not in reponse.headers
 
     def test_adresse_insensible_a_la_casse(self, client: TestClient, creer_compte) -> None:
         creer_compte(email="jean2@example.com")
@@ -42,8 +84,6 @@ class TestConnexion:
     def test_message_identique_que_le_compte_existe_ou_non(
         self, client: TestClient, creer_compte
     ) -> None:
-        """Pas d'énumération de comptes (§7.3) : la réponse ne doit pas
-        permettre de savoir si l'adresse est connue."""
         creer_compte(email="connu@example.com")
 
         connu = client.post(
@@ -65,8 +105,6 @@ class TestConnexion:
         assert reponse.status_code == 401
 
     def test_champ_inconnu_refuse(self, client: TestClient) -> None:
-        """`extra="forbid"` : un champ non prévu est une erreur, pas une donnée
-        silencieusement ignorée."""
         reponse = client.post(
             "/auth/login",
             json={"email": "a@example.com", "mot_de_passe": "x", "admin": True},
@@ -90,7 +128,6 @@ class TestProfil:
     def test_le_hash_n_est_jamais_expose(
         self, client: TestClient, creer_compte, entetes_de
     ) -> None:
-        """Le schéma de sortie décide de ce qui franchit la frontière HTTP."""
         creer_compte(email="discret@example.com")
         corps = client.get("/auth/me", headers=entetes_de("discret@example.com")).json()
 
@@ -111,11 +148,6 @@ class TestRevocation:
     def test_incrementer_la_version_invalide_le_jeton(
         self, client: TestClient, session: Session, creer_compte, entetes_de
     ) -> None:
-        """Mécanisme de révocation sans denylist (§7.3).
-
-        C'est ce test qui prouve qu'un compte désactivé perd l'accès
-        immédiatement, sans attendre l'expiration de son jeton.
-        """
         compte = creer_compte(email="revoque@example.com")
         entetes = entetes_de("revoque@example.com")
 
@@ -138,3 +170,49 @@ class TestRevocation:
         session.flush()
 
         assert client.get("/auth/me", headers=entetes).status_code == 401
+
+
+class TestDeconnexion:
+    def test_la_deconnexion_efface_le_cookie(self, client: TestClient, creer_compte) -> None:
+        creer_compte(email="sortie@example.com")
+        client.post(
+            "/auth/login",
+            json={"email": "sortie@example.com", "mot_de_passe": MOT_DE_PASSE_TEST},
+        )
+        assert client.get("/auth/me").status_code == 200
+
+        reponse = client.post("/auth/logout")
+
+        assert reponse.status_code == 204
+        assert client.get("/auth/me").status_code == 401
+
+    def test_se_deconnecter_sans_session_aboutit(self, client: TestClient) -> None:
+        # Un cookie expiré ne peut pas être effacé par le client : la route doit
+        # répondre même sans session valide.
+        assert client.post("/auth/logout").status_code == 204
+
+
+class TestOrigine:
+    def test_une_ecriture_depuis_une_autre_origine_est_refusee(
+        self, client: TestClient, creer_compte
+    ) -> None:
+        creer_compte(email="csrf@example.com")
+        client.post(
+            "/auth/login",
+            json={"email": "csrf@example.com", "mot_de_passe": MOT_DE_PASSE_TEST},
+        )
+
+        reponse = client.post("/auth/logout", headers={"Origin": "https://site-malveillant.test"})
+
+        assert reponse.status_code == 403
+        assert "Origine" in reponse.json()["message"]
+
+    def test_une_ecriture_depuis_l_origine_du_front_est_acceptee(self, client: TestClient) -> None:
+        reponse = client.post("/auth/logout", headers={"Origin": "http://localhost:5173"})
+        assert reponse.status_code == 204
+
+    def test_une_lecture_depuis_une_autre_origine_reste_possible(self, client: TestClient) -> None:
+        # Une lecture ne modifie rien : c'est CORS qui décide si le navigateur
+        # laissera la réponse être lue, pas ce contrôle.
+        reponse = client.get("/health", headers={"Origin": "https://site-malveillant.test"})
+        assert reponse.status_code != 403

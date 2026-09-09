@@ -4,17 +4,42 @@ Projet CDA · FastAPI synchrone · Vue 3 · PostgreSQL 16 · Redis · Docker
 
 ## État du dépôt
 
-**Socle + épopée A** (authentification et administration des comptes).
+**Complet — socle + épopées A, B, C et D. Les 16 user stories sont livrées.**
 
-| Implémenté | À venir |
+| US | Ce qui est implémenté |
 |---|---|
-| Socle : arborescence, Compose, CI/CD, tests de migration | Épopée B — trames et campagnes (US-03 à US-05) |
-| **US-01** — connexion argon2id + JWT, révocation par `version_jeton` | Épopée C — conduite de l'entretien (US-06 à US-14) |
-| **US-02** — CRUD comptes, rôles, hiérarchie, RBAC et portée | Épopée D — restitution (US-15, US-16) |
-| Front : écran de connexion et liste des utilisateurs | Écrans des lots suivants |
+| **US-01 / US-02** | Connexion argon2id + JWT, révocation par `version_jeton` ; comptes, rôles, hiérarchie, RBAC et portée |
+| **US-03 / US-04** | Trames avec **versionnement**, campagnes, ouverture et clôture |
+| **US-05** | Tableau de bord d'avancement, **sans aucun contenu de réponse** |
+| **US-06 à US-12** | Conduite de l'entretien, **confidentialité des réponses (US-10)** ⭐ |
+| **US-13** | Objectifs, avec **report automatique N-1 → N** |
+| **US-14** | **Double signature** horodatée, droit de réserve, gel des données |
+| **US-15** | Historique et parcours, en lecture seule |
+| **US-16** | **Export PDF**, disponible à partir de `SIGNE`, chaque export journalisé |
 
-113 tests backend (42 unitaires · 12 migrations · 25 intégration · 34 API) et
-16 tests frontend.
+**396 tests backend** (201 unitaires · 26 migrations · 51 intégration · 118 API)
+et **63 tests frontend**. 9 révisions Alembic, 17 tables, 42 endpoints.
+
+### Le point à démontrer — la confidentialité (US-10, §6.4)
+
+Le manager ne voit **pas** les réponses de son collaborateur tant que celui-ci
+ne les a pas validées. Le filtre est appliqué **en SQL** : le contenu ne quitte
+jamais la base, il n'est pas simplement masqué à l'écran. Onglet réseau ouvert,
+la réponse d'un manager avant validation ne contient aucune réponse.
+
+Détails et démonstration pas à pas :
+[docs/justification-epopee-c.md](docs/justification-epopee-c.md).
+
+### Documentation
+
+| Document | Contenu |
+|---|---|
+| [justification-technique.md](docs/justification-technique.md) | Socle : arborescence, Docker, CI/CD, tests de migration |
+| [justification-epopee-a.md](docs/justification-epopee-a.md) | Authentification et administration des comptes |
+| [justification-epopee-b.md](docs/justification-epopee-b.md) | Trames et campagnes, versionnement |
+| [justification-epopee-c.md](docs/justification-epopee-c.md) | ⭐ Conduite de l'entretien et **confidentialité** |
+| [justification-epopee-d.md](docs/justification-epopee-d.md) | Objectifs, signature, historique, export PDF |
+| [tracabilite.md](docs/tracabilite.md) | Matrice US → processus → endpoint → tests |
 
 ## Démarrage
 
@@ -37,12 +62,18 @@ make seed           # comptes de démonstration
 | Adresse | Rôle | Ce qu'il voit |
 |---|---|---|
 | `admin@example.com` | ADMIN | tous les utilisateurs, toutes les actions |
-| `rh@example.com` | RH | tous les utilisateurs, sauf archivage |
-| `manager@example.com` | MANAGER | **son équipe seulement** |
-| `collaborateur@example.com` | COLLABORATEUR | 403 sur la liste |
+| `rh@example.com` | RH | tous les utilisateurs ; l'avancement des campagnes, **jamais le contenu** |
+| `manager@example.com` | MANAGER | **son équipe seulement** ; les réponses **après validation** |
+| `collaborateur@example.com` | COLLABORATEUR | **son seul entretien**, 403 sur la liste des comptes |
 
-Le contraste entre ces quatre comptes est le scénario de démonstration du
-§6.4 : il montre en une minute la différence entre RBAC et contrôle de portée.
+Le contraste entre ces quatre comptes montre en une minute la différence entre
+RBAC (« ce rôle peut-il faire cette action ? ») et contrôle de portée (« sur
+cette cible précise ? »).
+
+**Scénario de démonstration du §6.4** — se connecter en `collaborateur`, saisir
+et valider ; puis en `manager`, ouvrir le même entretien avant et après la
+validation. La bascule est visible à l'écran, et vérifiable dans l'onglet
+réseau : avant validation, la charge utile ne contient aucune réponse.
 
 ### Sans Docker
 

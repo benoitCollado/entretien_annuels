@@ -1,5 +1,3 @@
-/** Liste des utilisateurs — état seulement, aucun appel réseau direct. */
-
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 

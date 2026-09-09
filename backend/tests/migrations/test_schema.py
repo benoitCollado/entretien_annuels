@@ -1,14 +1,3 @@
-"""Application des migrations sur une base PostgreSQL jetable.
-
-Quatre propriétés vérifiées :
-
-1. les migrations s'appliquent depuis une base vierge ;
-2. les rejouer ne casse rien — c'est le scénario du conteneur `migrate`
-   redémarré ;
-3. elles sont réellement réversibles, globalement et pas à pas ;
-4. le schéma migré et les modèles SQLAlchemy ne divergent pas.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -22,9 +11,6 @@ from tests.migrations.conftest import config_alembic, revisions_existantes
 pytestmark = pytest.mark.migrations
 
 
-# ---------------------------------------------------------------------------
-# Introspection du schéma
-# ---------------------------------------------------------------------------
 REQUETE_COLONNES = """
 SELECT table_name, column_name, data_type, is_nullable, column_default
 FROM information_schema.columns
@@ -51,11 +37,6 @@ ORDER BY tablename, indexname
 
 
 def empreinte_schema(url: str) -> dict[str, list[tuple]]:
-    """Photographie déterministe du schéma, comparable d'une exécution à l'autre.
-
-    `alembic_version` est exclue : son contenu varie légitimement selon la
-    position dans l'historique.
-    """
     moteur = create_engine(url)
     try:
         with moteur.connect() as connexion:
@@ -95,9 +76,6 @@ def tables_applicatives(url: str) -> set[str]:
         moteur.dispose()
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 def test_upgrade_depuis_base_vierge(url_base_vierge: str, exige_des_revisions: None) -> None:
     config = config_alembic(url_base_vierge)
     command.upgrade(config, "head")
@@ -114,12 +92,6 @@ def test_upgrade_depuis_base_vierge(url_base_vierge: str, exige_des_revisions: N
 
 
 def test_upgrade_est_idempotent(url_base_vierge: str, exige_des_revisions: None) -> None:
-    """Rejouer `upgrade head` ne doit rien faire et ne rien casser.
-
-    C'est exactement ce qui se produit quand le service `migrate` du compose
-    redémarre : sans cette propriété, un simple `docker compose up` après une
-    coupure deviendrait un incident.
-    """
     config = config_alembic(url_base_vierge)
     command.upgrade(config, "head")
     empreinte_avant = empreinte_schema(url_base_vierge)
@@ -130,7 +102,6 @@ def test_upgrade_est_idempotent(url_base_vierge: str, exige_des_revisions: None)
 
 
 def test_reversibilite_globale(url_base_vierge: str, exige_des_revisions: None) -> None:
-    """Montée, descente complète, remontée : le schéma doit être identique."""
     config = config_alembic(url_base_vierge)
 
     command.upgrade(config, "head")
@@ -148,12 +119,6 @@ def test_reversibilite_globale(url_base_vierge: str, exige_des_revisions: None) 
     "revision", revisions_existantes() or [pytest.param(None, marks=pytest.mark.skip)]
 )
 def test_reversibilite_pas_a_pas(url_base_vierge: str, revision: str) -> None:
-    """Descendre puis remonter d'un seul cran, sur chaque révision.
-
-    Sans ce test, un `downgrade()` bâclé sur une révision intermédiaire reste
-    invisible : la révision suivante recrée souvent ce que la précédente avait
-    mal défait, et l'aller-retour global passe malgré tout.
-    """
     config = config_alembic(url_base_vierge)
 
     command.upgrade(config, revision)
@@ -168,16 +133,6 @@ def test_reversibilite_pas_a_pas(url_base_vierge: str, revision: str) -> None:
 
 
 def test_aucune_derive_entre_modeles_et_migrations(url_base_vierge: str) -> None:
-    """Les modèles SQLAlchemy décrivent-ils exactement le schéma migré ?
-
-    C'est le test qui rattrape l'erreur la plus fréquente du quotidien :
-    modifier un modèle sans générer la migration correspondante.
-
-    Angles morts assumés (§10.4) : `compare_metadata` ne voit ni les
-    contraintes CHECK, ni les renommages, ni les triggers, vues et extensions.
-    Ils relèvent de tests écrits à la main et de la relecture de chaque
-    migration générée.
-    """
     try:
         from app.models import Base
     except (ImportError, AttributeError):

@@ -1,5 +1,3 @@
-"""Accès aux données du référentiel RBAC."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -18,12 +16,6 @@ class RoleRepository(BaseRepository[Role]):
         return self.session.scalars(stmt).one_or_none()
 
     def lister_par_codes(self, codes: Sequence[str]) -> list[Role]:
-        """Charge plusieurs rôles en une requête.
-
-        L'appelant compare le nombre obtenu au nombre demandé pour repérer un
-        code inconnu : c'est au processus de décider quoi en faire, pas au
-        repository.
-        """
         if not codes:
             return []
         stmt = select(Role).where(Role.code.in_(list(codes))).order_by(Role.code)

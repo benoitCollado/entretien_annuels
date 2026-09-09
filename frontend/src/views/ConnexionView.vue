@@ -20,8 +20,7 @@ async function soumettre() {
     const redirection = (route.query.redirection as string) || '/'
     await router.push(redirection)
   } catch (e) {
-    // Le message vient de l'API et reste volontairement identique que
-    // l'adresse existe ou non (§7.3).
+
     erreur.value = e instanceof ErreurHttp ? e.message : 'Connexion impossible. Réessayez.'
   }
 }

@@ -1,18 +1,3 @@
-"""Limitation de débit adossée à Redis (§7.3).
-
-Cible : `POST /auth/login` à 5 tentatives par 15 minutes et par couple IP +
-email. Implémentation `INCR` + `EXPIRE`, la primitive la plus simple qui rende
-le compteur atomique.
-
-**Arbitrage assumé — comportement quand Redis est injoignable.** Le module est
-*fail-open* : il laisse passer et journalise un avertissement. Fermer
-l'authentification entière parce qu'un cache de compteurs est tombé
-transformerait une panne mineure en interruption de service. Le compromis est
-défendable ici parce que Redis ne porte aucune donnée RH et que le rate limiting
-est une défense contre le bourrage d'identifiants, pas le contrôle d'accès
-lui-même — celui-ci reste assuré par argon2id et par le RBAC.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -37,7 +22,6 @@ def obtenir_client() -> redis.Redis:
 
 
 def cache_repond() -> bool:
-    """Sonde de disponibilité, utilisée par `/health/ready`."""
     try:
         return bool(obtenir_client().ping())
     except redis.RedisError as exc:
@@ -46,14 +30,10 @@ def cache_repond() -> bool:
 
 
 def exiger_sous_limite(cle: str, maximum: int, fenetre_secondes: int) -> None:
-    """Incrémente le compteur `cle` et lève `TropDeTentatives` au-delà du seuil."""
     try:
         client = obtenir_client()
         pipeline = client.pipeline()
         pipeline.incr(cle)
-        # L'expiration n'est posée que sur la première incrémentation : sans le
-        # test `nx=True`, chaque tentative repousserait la fenêtre et un
-        # attaquant régulier ne serait jamais bloqué.
         pipeline.expire(cle, fenetre_secondes, nx=True)
         compteur, _ = pipeline.execute()
     except redis.RedisError as exc:
@@ -68,18 +48,11 @@ def exiger_sous_limite(cle: str, maximum: int, fenetre_secondes: int) -> None:
 
 
 def reinitialiser(cle: str) -> None:
-    """Efface le compteur — appelé après une connexion réussie."""
     try:
         obtenir_client().delete(cle)
-    except redis.RedisError as exc:  # pragma: no cover - dépend de l'infrastructure
+    except redis.RedisError as exc:  # pragma: no cover
         logger.warning("Redis injoignable lors de la remise à zéro : %s", exc)
 
 
 def cle_connexion(adresse_ip: str | None, email: str) -> str:
-    """Compteur par couple IP + email (§7.3).
-
-    Le seul critère de l'IP pénaliserait tous les salariés derrière une même
-    sortie internet ; le seul critère de l'email permettrait de balayer les
-    comptes depuis autant d'adresses que voulu.
-    """
     return f"rl:connexion:{adresse_ip or 'inconnue'}:{email.lower()}"

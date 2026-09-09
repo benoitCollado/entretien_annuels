@@ -1,5 +1,3 @@
-"""Sondes de disponibilité."""
-
 from __future__ import annotations
 
 import pytest
@@ -15,8 +13,6 @@ def test_liveness(client: TestClient) -> None:
 
 
 def test_liveness_ne_demande_pas_d_authentification(client: TestClient) -> None:
-    """Docker interroge cette route sans jeton : la protéger rendrait le
-    healthcheck du conteneur inopérant."""
     assert "Authorization" not in client.headers
     assert client.get("/health").status_code == 200
 

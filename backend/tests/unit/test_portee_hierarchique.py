@@ -1,9 +1,3 @@
-"""Règles de hiérarchie et de périmètre — aucune base, aucun HTTP.
-
-Ces tests sont ceux qui prouvent la maîtrise du domaine : ils décrivent la
-règle métier sans aucune infrastructure.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -21,18 +15,12 @@ class TestRattachement:
             portee.exiger_rattachement_valide(ALICE, ALICE)
 
     def test_absence_de_manager_est_valide(self) -> None:
-        """Le dirigeant n'a pas de manager (US-02)."""
         portee.exiger_rattachement_valide(ALICE, None)
 
     def test_rattachement_simple_est_valide(self) -> None:
         portee.exiger_rattachement_valide(SOPHIE, JULIEN, ancetres_du_manager=[ALICE])
 
     def test_cycle_indirect_est_refuse(self) -> None:
-        """Alice encadre Julien : Julien ne peut pas devenir manager d'Alice.
-
-        Ce cas n'est **pas** exprimable en contrainte CHECK sous PostgreSQL — les
-        sous-requêtes y sont interdites. Cette règle en est la seule protection.
-        """
         with pytest.raises(DonneesInvalides, match="cycle"):
             portee.exiger_rattachement_valide(ALICE, JULIEN, ancetres_du_manager=[ALICE])
 
@@ -47,8 +35,6 @@ class TestPerimetreDeLecture:
         assert portee.perimetre_de_lecture([role], ALICE) is None
 
     def test_manager_restreint_a_son_equipe(self) -> None:
-        """Un manager porte le rôle MANAGER partout, mais ne voit que son
-        équipe. C'est la distinction RBAC / portée du §6.1."""
         assert portee.perimetre_de_lecture(["MANAGER"], JULIEN) == JULIEN
 
     def test_collaborateur_restreint_a_lui_meme(self) -> None:
@@ -70,6 +56,4 @@ class TestGestionDesComptes:
         ],
     )
     def test_qui_peut_gerer_les_comptes(self, roles: list[str], attendu: bool) -> None:
-        """Un manager consulte son équipe mais n'administre pas les comptes :
-        sans cette séparation, il pourrait s'attribuer des rôles."""
         assert portee.peut_gerer(roles) is attendu

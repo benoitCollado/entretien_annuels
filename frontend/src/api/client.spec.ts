@@ -1,8 +1,6 @@
-/** Tests de la couche HTTP : jeton, erreurs, session expirée. */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ErreurHttp, effacerJeton, ecrireJeton, requete } from '@/api/client'
+import { ErreurHttp, requete } from '@/api/client'
 
 function reponse(statut: number, corps: unknown): Response {
   return new Response(corps === null ? null : JSON.stringify(corps), {
@@ -13,39 +11,42 @@ function reponse(statut: number, corps: unknown): Response {
 
 describe('couche HTTP', () => {
   beforeEach(() => {
-    localStorage.clear()
-    effacerJeton()
+    vi.restoreAllMocks()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it("ajoute l'en-tête d'autorisation quand un jeton est présent", async () => {
+  it("n'envoie jamais d'en-tête d'autorisation", async () => {
     const appel = vi.fn().mockResolvedValue(reponse(200, { ok: true }))
     vi.stubGlobal('fetch', appel)
-    ecrireJeton('jeton-abc')
 
     await requete('/auth/me')
-
-    const entetes = appel.mock.calls[0][1].headers as Record<string, string>
-    expect(entetes.Authorization).toBe('Bearer jeton-abc')
-  })
-
-  it("n'ajoute pas d'en-tête sans jeton", async () => {
-    const appel = vi.fn().mockResolvedValue(reponse(200, {}))
-    vi.stubGlobal('fetch', appel)
-
-    await requete('/health')
 
     const entetes = appel.mock.calls[0][1].headers as Record<string, string>
     expect(entetes.Authorization).toBeUndefined()
   })
 
+  it('laisse le navigateur joindre le cookie de session', async () => {
+    const appel = vi.fn().mockResolvedValue(reponse(200, {}))
+    vi.stubGlobal('fetch', appel)
+
+    await requete('/health')
+
+    expect(appel.mock.calls[0][1].credentials).toBe('include')
+  })
+
+  it('ne touche pas au stockage local', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reponse(200, {})))
+
+    await requete('/auth/me')
+
+    expect(localStorage.length).toBe(0)
+  })
+
   it('transforme une erreur métier en ErreurHttp', async () => {
-    // `mockImplementation` et non `mockResolvedValue` : le corps d'une Response
-    // ne se lit qu'une fois, réutiliser la même instance ferait échouer le
-    // second appel sur un corps déjà consommé.
+
     vi.stubGlobal(
       'fetch',
       vi
@@ -76,22 +77,19 @@ describe('couche HTTP', () => {
     await expect(requete('/utilisateurs')).rejects.toThrow('Champ obligatoire')
   })
 
-  it('efface le jeton et signale la session expirée sur un 401', async () => {
+  it('signale la session expirée sur un 401', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reponse(401, { message: 'Session expirée' })))
-    ecrireJeton('jeton-perime')
     const ecouteur = vi.fn()
     window.addEventListener('session:expiree', ecouteur)
 
     await expect(requete('/utilisateurs')).rejects.toThrow()
 
-    expect(localStorage.getItem('jeton')).toBeNull()
     expect(ecouteur).toHaveBeenCalled()
     window.removeEventListener('session:expiree', ecouteur)
   })
 
   it('ne signale pas de session expirée sur la route de connexion', async () => {
-    // Sur `/auth/login`, un 401 est une réponse métier normale : rediriger
-    // ferait boucler l'écran de connexion sur lui-même.
+
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reponse(401, { message: 'Identifiants' })))
     const ecouteur = vi.fn()
     window.addEventListener('session:expiree', ecouteur)

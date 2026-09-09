@@ -1,9 +1,3 @@
-"""Configuration lue depuis l'environnement et validée au démarrage.
-
-Principe du « fail fast » : une variable manquante ou aberrante fait échouer la
-création de l'application, pas la première requête qui l'utilise.
-"""
-
 from __future__ import annotations
 
 import json
@@ -19,12 +13,7 @@ class Parametres(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        # `ignore` et non `forbid` : le conteneur reçoit aussi les variables
-        # POSTGRES_* et COMPOSE_* qui ne concernent pas l'application.
         extra="ignore",
-        # Sans cela, pydantic-settings tente un `json.loads` sur les champs de
-        # type complexe (ici `origines_cors`) AVANT les validateurs
-        # `mode="before"`, et échoue sur une valeur séparée par des virgules.
         enable_decoding=False,
     )
 
@@ -37,13 +26,16 @@ class Parametres(BaseSettings):
 
     redis_url: str = "redis://redis:6379/0"
 
-    # Au moins 32 caractères : une clé HS256 plus courte n'offre pas la marge de
-    # sécurité attendue.
     secret_key: str = Field(min_length=32)
     algorithme_jwt: str = "HS256"
     duree_jeton_minutes: int = Field(default=60, ge=1)
 
-    # Rate limiting de la connexion (§7.3) : 5 tentatives par 15 minutes.
+    cookie_jeton: str = "jeton"
+    cookie_samesite: Literal["lax", "strict", "none"] = "strict"
+    # None : déduit de l'environnement. Un booléen explicite permet de forcer le
+    # comportement sur une préproduction servie en clair.
+    cookie_secure: bool | None = None
+
     connexion_tentatives_max: int = Field(default=5, ge=1)
     connexion_fenetre_secondes: int = Field(default=900, ge=1)
 
@@ -52,7 +44,6 @@ class Parametres(BaseSettings):
     @field_validator("origines_cors", mode="before")
     @classmethod
     def _decouper_origines(cls, valeur: object) -> object:
-        """Accepte `a,b` (pratique en Docker) comme `["a", "b"]` (JSON)."""
         if not isinstance(valeur, str):
             return valeur
         texte = valeur.strip()
@@ -63,6 +54,10 @@ class Parametres(BaseSettings):
     @property
     def est_production(self) -> bool:
         return self.environnement in {"staging", "production"}
+
+    @property
+    def cookie_est_securise(self) -> bool:
+        return self.est_production if self.cookie_secure is None else self.cookie_secure
 
 
 @lru_cache

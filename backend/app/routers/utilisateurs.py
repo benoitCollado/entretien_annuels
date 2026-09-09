@@ -1,10 +1,3 @@
-"""Contrôleur — US-02, administration des comptes.
-
-Chaque endpoint déclare la permission qu'il exige (RBAC). Le contrôle de
-**portée** — « cet utilisateur-là, précisément ? » — est appliqué dans les
-processus, pas ici (§6.1).
-"""
-
 from __future__ import annotations
 
 from typing import Annotated
@@ -35,7 +28,7 @@ router = APIRouter(prefix="/utilisateurs", tags=["utilisateurs"])
     "",
     response_model=Page[UtilisateurLu],
     dependencies=[Depends(exige_permission("utilisateur:lire"))],
-    summary="Lister les utilisateurs (US-02)",
+    summary="Lister les utilisateurs",
 )
 def lister(
     session: SessionDep,
@@ -59,7 +52,7 @@ def lister(
     response_model=UtilisateurLu,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(exige_permission("utilisateur:creer"))],
-    summary="Créer un utilisateur (US-02)",
+    summary="Créer un utilisateur",
 )
 def creer(
     donnees: UtilisateurCree,
@@ -86,7 +79,7 @@ def creer(
     "/{utilisateur_id}",
     response_model=UtilisateurLu,
     dependencies=[Depends(exige_permission("utilisateur:modifier"))],
-    summary="Modifier un utilisateur (US-02)",
+    summary="Modifier un utilisateur",
 )
 def modifier(
     utilisateur_id: UUID,
@@ -106,8 +99,6 @@ def modifier(
         date_entree=donnees.date_entree,
         manager_id=donnees.manager_id,
         actif=donnees.actif,
-        # Transmet la liste des champs réellement fournis, pour distinguer
-        # « absent » de « mis à null ».
         champs_fournis=donnees.model_fields_set,
     )
     return UtilisateurLu.depuis_modele(modifie)
@@ -117,7 +108,7 @@ def modifier(
     "/{utilisateur_id}/roles",
     response_model=UtilisateurLu,
     dependencies=[Depends(exige_permission("role:attribuer"))],
-    summary="Remplacer les rôles d'un utilisateur (US-02)",
+    summary="Remplacer les rôles d'un utilisateur",
 )
 def attribuer(
     utilisateur_id: UUID,
@@ -138,15 +129,13 @@ def attribuer(
     "/{utilisateur_id}",
     response_model=UtilisateurLu,
     dependencies=[Depends(exige_permission("utilisateur:archiver"))],
-    summary="Archiver un utilisateur (US-02)",
+    summary="Archiver un utilisateur",
 )
 def archiver(
     utilisateur_id: UUID,
     session: SessionDep,
     utilisateur: UtilisateurCourant,
 ) -> UtilisateurLu:
-    """Archivage et non suppression : le compte reste rattaché à des entretiens
-    signés, qui sont des documents opposables (§4.4)."""
     archive = archiver_utilisateur.executer(
         session, auteur=utilisateur, utilisateur_id=utilisateur_id
     )

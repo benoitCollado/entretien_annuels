@@ -1,10 +1,3 @@
-"""Exceptions métier.
-
-Aucune connaissance de FastAPI ici : chaque exception porte le code HTTP qui lui
-correspond, et un unique handler fait la traduction (addendum §5.3). Les routers
-n'écrivent **jamais** de `HTTPException` pour un motif métier.
-"""
-
 from __future__ import annotations
 
 from typing import Any

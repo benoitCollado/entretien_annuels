@@ -1,9 +1,3 @@
-"""Processus — état de disponibilité des dépendances.
-
-Illustre le contrat de la couche sur un cas trivial : le processus orchestre un
-repository et un adaptateur, sans construire de requête ni connaître HTTP.
-"""
-
 from __future__ import annotations
 
 from sqlalchemy.orm import Session

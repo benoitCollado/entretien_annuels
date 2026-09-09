@@ -7,12 +7,10 @@ import { useAuthStore } from '@/stores/auth'
 const auth = useAuthStore()
 const router = useRouter()
 
-/**
- * La couche HTTP émet `session:expiree` sur un 401 ; c'est ici qu'on décide de
- * rediriger. Cette indirection évite que `api/client.ts` dépende du routeur.
- */
 function surSessionExpiree() {
-  auth.deconnexion()
+  // La session est déjà close côté serveur : on oublie le profil sans rappeler
+  // /auth/logout, qui n'aurait plus rien à effacer.
+  auth.oublier()
   void router.push({ name: 'connexion' })
 }
 

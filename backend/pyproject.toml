@@ -19,6 +19,11 @@ dependencies = [
     # Utiliser `uuid_utils.compat`, qui renvoie de vrais `uuid.UUID` — le module
     # racine expose un type maison que SQLAlchemy refuse.
     "uuid-utils>=0.10",
+    # Export PDF (US-16). `fpdf2` est **pure Python** : l'image reste une
+    # `python:3.13-slim` inchangée. WeasyPrint, plus riche, exigerait pango,
+    # cairo et gdk-pixbuf dans l'image — pour un compte rendu tabulaire, le
+    # surcoût de surface et de maintenance n'est pas justifié.
+    "fpdf2>=2.8",
 ]
 
 [project.optional-dependencies]
@@ -46,12 +51,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
-# B008 : `Depends(...)` en valeur par défaut est l'idiome FastAPI.
 ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
-# Les migrations sont générées puis relues : lignes longues tolérées sur les
-# définitions de colonnes.
 "migrations/versions/*.py" = ["E501"]
 
 [tool.ruff.lint.isort]
@@ -66,6 +68,7 @@ addopts = "-q --strict-markers"
 markers = [
     "migrations: exige PostgreSQL et le droit CREATE DATABASE",
     "integration: exige PostgreSQL",
+    "rate_limit: réactive la limitation de débit, neutralisée ailleurs (exige Redis)",
 ]
 
 [tool.coverage.run]

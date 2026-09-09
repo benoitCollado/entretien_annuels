@@ -1,5 +1,3 @@
-"""Règles d'attribution des rôles — aucune base, aucun HTTP."""
-
 from __future__ import annotations
 
 import pytest
@@ -30,9 +28,6 @@ class TestEscaladeDePrivileges:
         rbac.exiger_attribution_autorisee(["ADMIN"], ["ADMIN"])
 
     def test_rh_ne_peut_pas_conferer_admin(self) -> None:
-        """Le RH possède `role:attribuer`. Sans cette règle, il pourrait
-        s'octroyer les pleins pouvoirs : le RBAC seul ne l'empêche pas,
-        puisqu'il raisonne sur l'action et non sur sa cible."""
         with pytest.raises(AccesRefuse, match="administrateur"):
             rbac.exiger_attribution_autorisee(["RH"], ["ADMIN"])
 

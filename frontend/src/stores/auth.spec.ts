@@ -1,11 +1,3 @@
-/**
- * Tests du store de session.
- *
- * La couche `src/api/` est simulée : c'est précisément ce que permet la règle
- * du §7.4 — un store qui appellerait `fetch` directement ne serait pas testable
- * ainsi.
- */
-
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -39,25 +31,34 @@ describe('store auth', () => {
     vi.restoreAllMocks()
   })
 
-  it('démarre déconnecté sans jeton stocké', () => {
-    expect(useAuthStore().estConnecte).toBe(false)
+  it('démarre déconnecté tant que la session n’a pas été vérifiée', () => {
+    const store = useAuthStore()
+    expect(store.estConnecte).toBe(false)
+    expect(store.verifiee).toBe(false)
   })
 
-  it('stocke le jeton et charge le profil après connexion', async () => {
-    vi.spyOn(authApi, 'connexion').mockResolvedValue({
-      access_token: 'jeton-abc',
-      token_type: 'bearer',
-      expires_in: 3600,
-    })
-    vi.spyOn(authApi, 'profil').mockResolvedValue(profilFactice())
+  it('retient le profil renvoyé par la connexion, sans aucun jeton', async () => {
+    vi.spyOn(authApi, 'connexion').mockResolvedValue(profilFactice())
 
     const store = useAuthStore()
     await store.connexion('claire@example.com', 'MotDePasse')
 
     expect(store.estConnecte).toBe(true)
-    expect(localStorage.getItem('jeton')).toBe('jeton-abc')
     expect(store.utilisateur?.nom_complet).toBe('Claire Bernard')
     expect(store.roles).toEqual(['RH'])
+    // Le jeton est dans un cookie HttpOnly : rien ne doit en rester ici.
+    expect(localStorage.length).toBe(0)
+    expect(JSON.stringify(store.utilisateur)).not.toContain('access_token')
+  })
+
+  it('ne rappelle pas le serveur une fois la session vérifiée', async () => {
+    const profil = vi.spyOn(authApi, 'profil').mockResolvedValue(profilFactice())
+
+    const store = useAuthStore()
+    await store.restaurer()
+    await store.restaurer()
+
+    expect(profil).toHaveBeenCalledTimes(1)
   })
 
   it('remet le chargement à zéro même quand la connexion échoue', async () => {
@@ -74,7 +75,6 @@ describe('store auth', () => {
     vi.spyOn(authApi, 'profil').mockResolvedValue(profilFactice())
 
     const store = useAuthStore()
-    store.jeton = 'jeton-abc'
     await store.restaurer()
 
     expect(store.peut('utilisateur:lire')).toBe(true)
@@ -82,40 +82,50 @@ describe('store auth', () => {
   })
 
   it("n'accorde rien de plus à un administrateur côté client", async () => {
-    // Le front ne réplique pas la logique du serveur : il lit les permissions
-    // effectives renvoyées par l'API, sans les déduire du rôle.
+
     vi.spyOn(authApi, 'profil').mockResolvedValue(
       profilFactice({ roles: [{ code: 'ADMIN', libelle: 'Administrateur' }], permissions: [] }),
     )
 
     const store = useAuthStore()
-    store.jeton = 'jeton-abc'
     await store.restaurer()
 
     expect(store.peut('utilisateur:lire')).toBe(false)
   })
 
-  it('vide la session quand le profil est refusé', async () => {
+  it('reste déconnecté quand le serveur refuse le profil', async () => {
     vi.spyOn(authApi, 'profil').mockRejectedValue(new Error('401'))
-    localStorage.setItem('jeton', 'jeton-perime')
 
     const store = useAuthStore()
-    store.jeton = 'jeton-perime'
     await store.restaurer()
 
     expect(store.estConnecte).toBe(false)
-    expect(localStorage.getItem('jeton')).toBeNull()
+    expect(store.verifiee).toBe(true)
   })
 
-  it('efface le jeton à la déconnexion', () => {
-    localStorage.setItem('jeton', 'jeton-abc')
+  it('demande au serveur de fermer la session', async () => {
+    vi.spyOn(authApi, 'connexion').mockResolvedValue(profilFactice())
+    const sortie = vi.spyOn(authApi, 'deconnexion').mockResolvedValue(undefined)
+
     const store = useAuthStore()
-    store.jeton = 'jeton-abc'
+    await store.connexion('claire@example.com', 'MotDePasse')
+    await store.deconnexion()
 
-    store.deconnexion()
-
+    // Le cookie étant HttpOnly, seul le serveur peut l'effacer.
+    expect(sortie).toHaveBeenCalled()
     expect(store.estConnecte).toBe(false)
     expect(store.utilisateur).toBeNull()
-    expect(localStorage.getItem('jeton')).toBeNull()
+  })
+
+  it('oublie le profil localement quand la session a déjà expiré', async () => {
+    vi.spyOn(authApi, 'connexion').mockResolvedValue(profilFactice())
+    const sortie = vi.spyOn(authApi, 'deconnexion').mockResolvedValue(undefined)
+
+    const store = useAuthStore()
+    await store.connexion('claire@example.com', 'MotDePasse')
+    store.oublier()
+
+    expect(store.estConnecte).toBe(false)
+    expect(sortie).not.toHaveBeenCalled()
   })
 })

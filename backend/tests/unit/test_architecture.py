@@ -1,10 +1,3 @@
-"""Vérification automatique des règles de couche (addendum §7).
-
-Transforme une discipline en preuve objective : le test parcourt chaque couche
-et échoue si un motif interdit y apparaît. Il s'exécute en quelques
-millisecondes et n'exige aucune infrastructure.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -14,14 +7,12 @@ import pytest
 
 RACINE = Path(__file__).resolve().parents[2] / "app"
 
-# Motifs interdits par couche. La liste de l'addendum est reprise, avec une
-# adaptation documentée : `from app.models` reste autorisé dans `schemas/`, qui
-# construit les représentations de sortie à partir des modèles.
 INTERDITS: dict[str, tuple[str, ...]] = {
     "routers": ("from sqlalchemy", "import sqlalchemy", "from app.repositories", "from app.models"),
     "services/regles": ("from sqlalchemy", "from fastapi", "Session"),
     "services/processus": ("from fastapi", "select(", "session.commit"),
     "repositories": ("from fastapi", "from app.services"),
+    "services/rendu": ("from sqlalchemy", "from fastapi", "Session", "from app.repositories"),
 }
 
 
@@ -48,23 +39,11 @@ def test_couche_ne_depasse_pas_ses_responsabilites(couche: str, motifs: tuple[st
 
 
 def test_les_couches_verifiees_existent() -> None:
-    """Garde anti-faux-vert : un dossier renommé rendrait le test creux, car il
-    ne parcourrait plus aucun fichier."""
     for couche in INTERDITS:
         assert _fichiers(couche), f"aucun fichier analysé dans {couche}/"
 
 
 def test_endpoints_declares_en_synchrone() -> None:
-    """Aucune coroutine dans les routers (§7.1).
-
-    FastAPI exécute les fonctions synchrones dans un threadpool ; une coroutine
-    contenant un appel SQLAlchemy synchrone bloquerait la boucle d'événements et
-    gèlerait le serveur entier. C'est le piège n°1 du mode synchrone.
-
-    L'analyse porte sur l'arbre syntaxique et non sur le texte : une première
-    version cherchait la chaîne « async def », et signalait les docstrings qui
-    expliquent précisément pourquoi il ne faut pas en écrire.
-    """
     fautifs = [
         f"{fichier.name}:{noeud.name}"
         for fichier in _fichiers("routers")

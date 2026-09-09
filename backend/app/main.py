@@ -1,11 +1,3 @@
-"""Création de l'application FastAPI.
-
-⚠️ Rappel du §7.1 : tous les endpoints se déclarent avec `def`, jamais
-`async def`. FastAPI exécute alors les fonctions synchrones dans un threadpool.
-Un `async def` contenant un appel SQLAlchemy synchrone bloquerait la boucle
-d'événements et gèlerait le serveur entier.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -14,8 +6,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Parametres, obtenir_parametres
-from app.core import gestion_erreurs
-from app.routers import auth, sante, utilisateurs
+from app.core import gestion_erreurs, protection_csrf
+from app.routers import (
+    auth,
+    campagnes,
+    entretiens,
+    objectifs,
+    sante,
+    tableau_bord,
+    templates,
+    utilisateurs,
+)
 
 
 def creer_application(parametres: Parametres | None = None) -> FastAPI:
@@ -34,8 +35,10 @@ def creer_application(parametres: Parametres | None = None) -> FastAPI:
         openapi_url="/openapi.json",
     )
 
-    # CORS restreint à une liste explicite d'origines (§7.3) — jamais "*",
-    # a fortiori avec `allow_credentials`.
+    # Enregistré avant CORS : le middleware ajouté en dernier est le plus
+    # extérieur, donc un refus d'origine ressort avec ses en-têtes CORS.
+    protection_csrf.enregistrer(app, parametres.origines_cors)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=parametres.origines_cors,
@@ -49,9 +52,11 @@ def creer_application(parametres: Parametres | None = None) -> FastAPI:
     app.include_router(sante.router)
     app.include_router(auth.router)
     app.include_router(utilisateurs.router)
-    # Lots suivants : campagnes, templates, entretiens, questionnaires,
-    # reponses, commentaires, objectifs, tableau_bord, exports.
-    # Voir docs/tracabilite.md.
+    app.include_router(templates.router)
+    app.include_router(campagnes.router)
+    app.include_router(entretiens.router)
+    app.include_router(tableau_bord.router)
+    app.include_router(objectifs.router)
 
     return app
 

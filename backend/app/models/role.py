@@ -1,5 +1,3 @@
-"""Référentiel RBAC : rôles, permissions et tables de liaison."""
-
 from __future__ import annotations
 
 import uuid
@@ -71,9 +69,6 @@ class Role(Base):
     code: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
     libelle: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    # `selectin` : les permissions sont systématiquement nécessaires pour
-    # évaluer le RBAC, autant les charger en une requête supplémentaire plutôt
-    # qu'une par rôle.
     permissions: Mapped[list[Permission]] = relationship(
         secondary=role_permission, back_populates="roles", lazy="selectin"
     )

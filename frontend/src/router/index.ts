@@ -10,8 +10,28 @@ const routes: RouteRecordRaw[] = [
     meta: { publique: true },
   },
   {
+
     path: '/',
-    redirect: { name: 'utilisateurs' },
+    redirect: { name: 'mes-entretiens' },
+  },
+  {
+    path: '/entretiens',
+    name: 'mes-entretiens',
+    component: () => import('@/views/MesEntretiensView.vue'),
+    meta: { permission: 'entretien:lire' },
+  },
+  {
+    path: '/entretiens/:id',
+    name: 'entretien',
+    component: () => import('@/views/EntretienView.vue'),
+
+    meta: { permission: 'entretien:lire' },
+  },
+  {
+    path: '/tableau-bord',
+    name: 'tableau-bord',
+    component: () => import('@/views/TableauBordView.vue'),
+    meta: { permission: 'tableau_bord:lire' },
   },
   {
     path: '/utilisateurs',
@@ -20,13 +40,32 @@ const routes: RouteRecordRaw[] = [
     meta: { permission: 'utilisateur:lire' },
   },
   {
+    path: '/trames',
+    name: 'trames',
+    component: () => import('@/views/TramesView.vue'),
+    meta: { permission: 'template:lire' },
+  },
+  {
+    path: '/trames/:id',
+    name: 'trame-editeur',
+    component: () => import('@/views/TrameEditeurView.vue'),
+
+    meta: { permission: 'template:lire' },
+  },
+  {
+    path: '/campagnes',
+    name: 'campagnes',
+    component: () => import('@/views/CampagnesView.vue'),
+    meta: { permission: 'campagne:lire' },
+  },
+  {
     path: '/interdit',
     name: 'interdit',
     component: () => import('@/views/InterditView.vue'),
   },
   {
     path: '/:chemin(.*)*',
-    redirect: { name: 'utilisateurs' },
+    redirect: { name: 'mes-entretiens' },
   },
 ]
 

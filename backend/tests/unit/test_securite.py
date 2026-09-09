@@ -1,5 +1,3 @@
-"""Hachage et jetons — aucune base, aucun HTTP."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -21,12 +19,9 @@ class TestHachage:
         assert MOT_DE_PASSE not in empreinte
 
     def test_profil_argon2id(self) -> None:
-        """OWASP recommande argon2id plutôt que argon2i ou argon2d (§4.4)."""
         assert securite.hacher_mot_de_passe(MOT_DE_PASSE).startswith("$argon2id$")
 
     def test_deux_hachages_different(self) -> None:
-        """Le sel est aléatoire : deux empreintes du même mot de passe diffèrent,
-        ce qui interdit les tables précalculées."""
         assert securite.hacher_mot_de_passe(MOT_DE_PASSE) != securite.hacher_mot_de_passe(
             MOT_DE_PASSE
         )
@@ -40,12 +35,9 @@ class TestHachage:
         assert securite.verifier_mot_de_passe("autre-chose", empreinte) is False
 
     def test_empreinte_corrompue_ne_leve_pas(self) -> None:
-        """L'appelant n'a pas à distinguer « mauvais mot de passe » de
-        « empreinte illisible » : les deux se soldent par un refus."""
         assert securite.verifier_mot_de_passe(MOT_DE_PASSE, "pas-une-empreinte") is False
 
     def test_empreinte_factice_utilisable(self) -> None:
-        """Sert à égaliser le temps de réponse quand l'adresse est inconnue."""
         assert securite.verifier_mot_de_passe("n-importe-quoi", securite.EMPREINTE_FACTICE) is False
 
 
@@ -82,8 +74,6 @@ class TestJetons:
             securite.decoder_jeton(expire)
 
     def test_jeton_sans_version_refuse(self, parametres: Parametres) -> None:
-        """La version de jeton est le mécanisme de révocation (§7.3) : un jeton
-        qui n'en porte pas ne peut pas être validé."""
         sans_version = jwt.encode(
             {"sub": str(uuid7()), "exp": 9999999999},
             parametres.secret_key,

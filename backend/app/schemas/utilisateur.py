@@ -1,5 +1,3 @@
-"""Schémas des utilisateurs et du référentiel RBAC (US-02)."""
-
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -10,8 +8,6 @@ from pydantic import EmailStr, Field, field_validator, model_validator
 from app.models.utilisateur import Utilisateur
 from app.schemas.commun import SchemaEntree, SchemaSortie
 
-# 12 caractères minimum : recommandation courante quand aucune règle de
-# composition n'est imposée. La longueur protège mieux que la complexité.
 LONGUEUR_MOT_DE_PASSE_MIN = 12
 
 
@@ -21,12 +17,6 @@ class RoleLu(SchemaSortie):
 
 
 class UtilisateurLu(SchemaSortie):
-    """Ce qu'un client a le droit de voir.
-
-    ⚠️ `mot_de_passe_hash` et `version_jeton` ne figurent volontairement pas
-    dans ce schéma : ils ne doivent jamais franchir la frontière HTTP.
-    """
-
     id: UUID
     email: EmailStr
     nom: str
@@ -78,13 +68,6 @@ class UtilisateurCree(SchemaEntree):
 
 
 class UtilisateurModifie(SchemaEntree):
-    """Tous les champs sont facultatifs : mise à jour partielle.
-
-    `model_fields_set` permet ensuite de distinguer « champ absent » de « champ
-    mis à null » — sans quoi une requête partielle effacerait les champs
-    facultatifs non transmis.
-    """
-
     email: EmailStr | None = None
     nom: str | None = Field(default=None, min_length=1, max_length=100)
     prenom: str | None = Field(default=None, min_length=1, max_length=100)

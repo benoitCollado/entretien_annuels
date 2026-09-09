@@ -1,9 +1,3 @@
-"""Processus — US-02. Endpoint appelant : `DELETE /utilisateurs/{id}`.
-
-⚠️ Archivage, **jamais** suppression physique (§4.4) : un compte reste rattaché
-à des entretiens signés, qui sont des documents opposables.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -36,11 +30,7 @@ def executer(
 
     utilisateur.archived_at = datetime.now(UTC)
     utilisateur.actif = False
-    # Coupe immédiatement les sessions en cours du compte archivé.
     utilisateur.version_jeton += 1
 
-    # La clé étrangère `manager_id` est en SET NULL : l'équipe du manager
-    # archivé se retrouve sans rattachement plutôt que supprimée. Le
-    # réaffectation relève d'une décision RH, pas d'un effet de bord technique.
     session.flush()
     return utilisateur

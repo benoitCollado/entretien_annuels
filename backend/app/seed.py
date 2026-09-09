@@ -1,12 +1,3 @@
-"""Jeu de données de démonstration.
-
-Idempotent : relançable sans créer de doublon. Les **rôles et permissions** ne
-sont pas créés ici — ce sont des données structurantes, posées par la migration
-`4e2bb21d65e6`. Ce script ne crée que des comptes.
-
-    python -m app.seed
-"""
-
 from __future__ import annotations
 
 import logging
@@ -68,7 +59,6 @@ def peupler(session: Session) -> int:
     roles_repo = RoleRepository(session)
     crees = 0
 
-    # Premier passage : les comptes, sans rattachement hiérarchique.
     for compte in COMPTES:
         email = str(compte["email"])
         if utilisateurs.get_par_email(email) is not None:
@@ -99,7 +89,6 @@ def peupler(session: Session) -> int:
         crees += 1
         logger.info("+ %s (%s)", email, ", ".join(codes))
 
-    # Second passage : les rattachements, une fois tous les comptes présents.
     for compte in COMPTES:
         if "manager" not in compte:
             continue

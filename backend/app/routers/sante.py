@@ -1,9 +1,3 @@
-"""Sondes de disponibilité.
-
-Note de couche : ce module n'importe rien de SQLAlchemy ni des modèles. La
-session arrive déjà annotée via `SessionDep`.
-"""
-
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -18,8 +12,6 @@ router = APIRouter(tags=["sante"])
 
 @router.get("/health", response_model=SanteLue, summary="Liveness")
 def sante() -> SanteLue:
-    """Le processus répond-il ? Aucune dépendance externe n'est sollicitée :
-    c'est ce que Docker interroge pour décider de redémarrer le conteneur."""
     parametres = obtenir_parametres()
     return SanteLue(
         statut="ok",
@@ -30,6 +22,4 @@ def sante() -> SanteLue:
 
 @router.get("/health/ready", response_model=SantePreteLue, summary="Readiness")
 def sante_prete(session: SessionDep) -> SantePreteLue:
-    """Les dépendances répondent-elles ? Renvoie 200 avec un statut `degrade`
-    plutôt qu'une erreur : c'est un diagnostic, pas un échec de requête."""
     return SantePreteLue(**verifier_sante.executer(session))

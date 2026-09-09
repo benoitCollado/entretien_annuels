@@ -1,5 +1,3 @@
-"""Processus — US-02. Endpoint appelant : `PATCH /utilisateurs/{id}`."""
-
 from __future__ import annotations
 
 from datetime import date
@@ -31,11 +29,6 @@ def executer(
     actif: bool | None = None,
     champs_fournis: set[str] | None = None,
 ) -> Utilisateur:
-    """`champs_fournis` distingue « champ absent » de « champ mis à None ».
-
-    Sans cette distinction, une requête partielle effacerait silencieusement les
-    champs facultatifs non transmis.
-    """
     fournis = champs_fournis if champs_fournis is not None else set()
     utilisateurs = UtilisateurRepository(session)
 
@@ -50,7 +43,6 @@ def executer(
         if utilisateurs.email_existe(email, sauf_id=utilisateur.id):
             raise ConflitMetier("Cette adresse est déjà utilisée.")
         utilisateur.email = email
-        # Changer l'adresse de connexion invalide les sessions en cours.
         utilisateur.version_jeton += 1
 
     valeurs: dict[str, Any] = {
@@ -76,8 +68,6 @@ def executer(
 
     if "actif" in fournis and actif is not None and actif != utilisateur.actif:
         utilisateur.actif = actif
-        # Désactiver un compte doit couper l'accès immédiatement, sans attendre
-        # l'expiration du jeton en cours (§7.3).
         utilisateur.version_jeton += 1
 
     session.flush()

@@ -1,10 +1,3 @@
-"""Le référentiel en base correspond-il aux énumérations du code ?
-
-La migration `4e2bb21d65e6` fige volontairement les rôles et permissions, pour
-rester reproductible dans le temps. La contrepartie est un risque de divergence
-avec `app.models.enums` : ce test est la contrepartie de ce choix.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -34,8 +27,6 @@ def test_toutes_les_permissions_du_code_existent_en_base(session: Session) -> No
 
 @pytest.mark.parametrize("code_role", sorted(CodeRole))
 def test_attribution_des_permissions_conforme(session: Session, code_role: CodeRole) -> None:
-    """C'est ce test qui échoue si quelqu'un modifie `PERMISSIONS_PAR_ROLE` sans
-    écrire la migration correspondante."""
     role = RoleRepository(session).get_par_code(code_role.value)
     assert role is not None, f"rôle {code_role} absent de la base"
 
@@ -56,9 +47,17 @@ def test_admin_possede_toutes_les_permissions(session: Session) -> None:
     assert role.codes_permissions() == {p.value for p in CodePermission}
 
 
-def test_collaborateur_ne_possede_aucune_permission(session: Session) -> None:
-    """Un collaborateur accède à ses propres données par des endpoints dédiés,
-    jamais par les permissions d'administration."""
+def test_collaborateur_ne_possede_aucune_permission_d_administration(
+    session: Session,
+) -> None:
     role = RoleRepository(session).get_par_code(CodeRole.COLLABORATEUR.value)
     assert role is not None
-    assert role.codes_permissions() == set()
+    assert role.codes_permissions() == {
+        CodePermission.ENTRETIEN_LIRE.value,
+        CodePermission.EXPORT_LIRE.value,
+    }
+
+    assert not any(
+        code.startswith(("utilisateur:", "role:", "template:", "campagne:"))
+        for code in role.codes_permissions()
+    )

@@ -1,10 +1,3 @@
-"""Administration des comptes de bout en bout — US-02.
-
-Deux mécanismes distincts y sont éprouvés (§6.1) :
-  - le **RBAC** : « ce rôle peut-il faire cette action ? » ;
-  - la **portée** : « cet utilisateur-là, précisément ? ».
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -39,7 +32,6 @@ class TestRbac:
         assert "utilisateur:lire" in reponse.json()["message"]
 
     def test_manager_ne_peut_pas_creer(self, client: TestClient, creer_compte, entetes_de) -> None:
-        """Un manager consulte son équipe mais n'administre pas les comptes."""
         creer_compte(email="chef@example.com", roles=["MANAGER"])
         reponse = client.post("/utilisateurs", json=NOUVEAU, headers=entetes_de("chef@example.com"))
         assert reponse.status_code == 403
@@ -52,7 +44,6 @@ class TestPortee:
     def test_manager_ne_voit_que_son_equipe(
         self, client: TestClient, creer_compte, entetes_de
     ) -> None:
-        """La restriction est appliquée en SQL, pas après coup en Python."""
         manager = creer_compte(email="chef2@example.com", roles=["MANAGER"])
         creer_compte(email="membre1@example.com", manager_id=manager.id)
         creer_compte(email="membre2@example.com", manager_id=manager.id)
@@ -83,7 +74,6 @@ class TestCreation:
         assert corps["email"] == "nouveau@example.com"
         assert [r["code"] for r in corps["roles"]] == ["COLLABORATEUR"]
 
-        # Le compte créé peut se connecter immédiatement.
         connexion = client.post(
             "/auth/login",
             json={"email": "nouveau@example.com", "mot_de_passe": NOUVEAU["mot_de_passe"]},
@@ -113,8 +103,6 @@ class TestCreation:
     def test_rh_ne_peut_pas_creer_un_admin(
         self, client: TestClient, creer_compte, entetes_de
     ) -> None:
-        """Escalade de privilèges : le RH possède `utilisateur:creer`, mais ne
-        doit pas pouvoir fabriquer un administrateur."""
         creer_compte(email="rh6@example.com", roles=["RH"])
         reponse = client.post(
             "/utilisateurs",
@@ -135,8 +123,6 @@ class TestCreation:
 
 class TestModification:
     def test_modification_partielle(self, client: TestClient, creer_compte, entetes_de) -> None:
-        """Seuls les champs transmis sont modifiés : `poste` ne doit pas être
-        effacé parce qu'il n'a pas été fourni."""
         creer_compte(email="rh8@example.com", roles=["RH"])
         cible = creer_compte(email="cible@example.com")
         cible.poste = "Technicien"
@@ -163,7 +149,6 @@ class TestModification:
         assert reponse.status_code == 200
         assert reponse.json()["actif"] is False
 
-        # Le compte désactivé ne peut plus se connecter.
         connexion = client.post(
             "/auth/login",
             json={"email": "adesactiver@example.com", "mot_de_passe": MOT_DE_PASSE_TEST},
@@ -180,7 +165,6 @@ class TestModification:
         assert reponse.status_code == 404
 
     def test_cycle_hierarchique_refuse(self, client: TestClient, creer_compte, entetes_de) -> None:
-        """Cas non couvrable par une contrainte CHECK."""
         creer_compte(email="rh11@example.com", roles=["RH"])
         chef = creer_compte(email="chef3@example.com")
         membre = creer_compte(email="membre3@example.com", manager_id=chef.id)
@@ -230,12 +214,10 @@ class TestRolesEtArchivage:
         assert reponse.status_code == 200
         assert reponse.json()["actif"] is False
 
-        # Le compte disparaît des listes mais existe toujours en base.
         liste = client.get("/utilisateurs", headers=entetes_de("admin4@example.com")).json()
         assert "aarchiver@example.com" not in {u["email"] for u in liste["elements"]}
 
     def test_rh_ne_peut_pas_archiver(self, client: TestClient, creer_compte, entetes_de) -> None:
-        """`utilisateur:archiver` n'est accordée qu'à l'administrateur."""
         creer_compte(email="rh12@example.com", roles=["RH"])
         cible = creer_compte(email="protege@example.com")
 

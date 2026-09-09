@@ -1,5 +1,3 @@
-/** Test de composant : rendu et remontée d'erreur de l'écran de connexion. */
-
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

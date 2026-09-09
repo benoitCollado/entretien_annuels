@@ -1,11 +1,3 @@
-"""Repository générique — addendum §3.1.
-
-Contrat de la couche : toutes les requêtes SQL vivent ici, et **rien d'autre**.
-Un repository ne décide jamais si une action est permise et ne lève aucune
-exception métier. Il ne commite jamais : `flush()` suffit à obtenir un
-identifiant, le commit appartient à `get_db`.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -17,8 +9,6 @@ from sqlalchemy.orm import Session
 from app.models.base import Base
 
 
-# Syntaxe générique PEP 695 (Python 3.12+) : plus concise que TypeVar +
-# Generic, et c'est ce que ruff attend avec target-version = py312.
 class BaseRepository[M: Base]:
     modele: type[M]
 
@@ -34,7 +24,7 @@ class BaseRepository[M: Base]:
 
     def ajouter(self, instance: M) -> M:
         self.session.add(instance)
-        self.session.flush()  # obtient l'identifiant sans commiter
+        self.session.flush()
         return instance
 
     def ajouter_tous(self, instances: Sequence[M]) -> None:

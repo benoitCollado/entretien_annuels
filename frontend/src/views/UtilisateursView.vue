@@ -1,39 +1,17 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 
-import { useAuthStore } from '@/stores/auth'
 import { useUtilisateursStore } from '@/stores/utilisateurs'
+import AppEntete from '@/components/AppEntete.vue'
 
-const auth = useAuthStore()
 const utilisateurs = useUtilisateursStore()
-const router = useRouter()
 
 onMounted(() => utilisateurs.charger())
-
-async function seDeconnecter() {
-  auth.deconnexion()
-  await router.push({ name: 'connexion' })
-}
 </script>
 
 <template>
   <div class="min-h-screen bg-slate-50">
-    <header class="flex items-center gap-4 border-b border-slate-200 bg-white px-6 py-3">
-      <span class="font-semibold text-slate-900">Entretiens</span>
-      <span class="flex-1" />
-      <span v-if="auth.utilisateur" class="text-sm text-slate-600">
-        {{ auth.utilisateur.nom_complet }}
-        <span class="text-slate-400">({{ auth.roles.join(', ') }})</span>
-      </span>
-      <button
-        type="button"
-        class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-        @click="seDeconnecter"
-      >
-        Déconnexion
-      </button>
-    </header>
+    <AppEntete />
 
     <main class="mx-auto max-w-5xl p-6">
       <h1 class="mb-4 text-lg font-semibold text-slate-900">Utilisateurs</h1>
@@ -84,8 +62,6 @@ async function seDeconnecter() {
 
         <p class="mt-3 text-sm text-slate-500">
           {{ utilisateurs.total }} utilisateur(s)
-          <!-- Un manager ne voit que son équipe : la restriction est appliquée
-               côté serveur, en SQL. -->
         </p>
       </template>
     </main>

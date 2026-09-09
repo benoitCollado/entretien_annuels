@@ -1,15 +1,3 @@
-"""Environnement Alembic.
-
-Deux propriétés recherchées :
-
-1. **L'URL vient de l'environnement**, pas de `alembic.ini`. Les tests peuvent
-   donc pointer une base jetable en surchargeant simplement l'option
-   `sqlalchemy.url` de l'objet `Config` qu'ils construisent.
-2. **Le fichier fonctionne sans modèle.** Tant qu'aucun modèle n'est déclaré,
-   `target_metadata` vaut `None` : les commandes Alembic restent utilisables et
-   le test de dérive se met en attente au lieu d'échouer.
-"""
-
 from __future__ import annotations
 
 import os
@@ -23,7 +11,6 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Priorité à ce que le test (ou la ligne de commande) a explicitement fourni.
 url = config.get_main_option("sqlalchemy.url") or os.environ.get("DATABASE_URL")
 if not url:
     raise RuntimeError(
@@ -34,13 +21,6 @@ config.set_main_option("sqlalchemy.url", url)
 
 
 def _metadonnees_cible():
-    """Métadonnées SQLAlchemy, ou `None` tant qu'aucun modèle n'existe.
-
-    ⚠️ Chaque nouveau module de modèle doit être importé dans
-    `app/models/__init__.py`. L'oublier rendrait le test de dérive
-    faussement vert : une table absente des métadonnées ne peut produire
-    aucune différence.
-    """
     try:
         from app.models import Base
     except (ImportError, AttributeError):
@@ -50,10 +30,6 @@ def _metadonnees_cible():
 
 target_metadata = _metadonnees_cible()
 
-# `compare_type` et `compare_server_default` rendent la détection de dérive
-# nettement plus fine. Rappel des angles morts d'Alembic (§10.4) : les
-# contraintes CHECK, les renommages, les triggers et les vues ne sont PAS
-# détectés — d'où les tests de contraintes écrits à la main.
 OPTIONS_COMPARAISON = {
     "compare_type": True,
     "compare_server_default": True,

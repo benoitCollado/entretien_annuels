@@ -16,6 +16,14 @@ services:
     build:
       target: dev
     image: ${BACKEND_IMAGE:-entretiens/backend}:dev-local
+    # Sans ces montages, `make migrate` rejoue les migrations **figées dans
+    # l'image** au dernier build : une révision tout juste écrite est
+    # silencieusement ignorée, et la base paraît à jour alors qu'elle ne l'est
+    # pas. En production le comportement inverse est voulu — l'image fait foi.
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
+      - ./backend/alembic.ini:/app/alembic.ini:ro
 
   api:
     build:

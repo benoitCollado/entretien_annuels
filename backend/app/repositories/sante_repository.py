@@ -1,10 +1,3 @@
-"""Sonde de disponibilité de la base.
-
-Elle vit dans la couche d'accès aux données parce qu'elle exécute du SQL, même
-trivial. C'est ce qui permet au router de santé de ne rien importer de
-SQLAlchemy.
-"""
-
 from __future__ import annotations
 
 import logging

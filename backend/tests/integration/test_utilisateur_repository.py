@@ -1,9 +1,3 @@
-"""Repository des utilisateurs contre PostgreSQL réel.
-
-Ce qui est vérifié ici ne peut pas l'être en test unitaire : le comportement de
-CITEXT, l'application des filtres en SQL et la remontée de la hiérarchie.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -16,8 +10,6 @@ pytestmark = pytest.mark.integration
 
 class TestRechercheParEmail:
     def test_insensible_a_la_casse(self, session: Session, creer_compte) -> None:
-        """La colonne est en CITEXT : c'est PostgreSQL qui compare, sans
-        `lower()` applicatif."""
         creer_compte(email="Alice.Martin@Example.COM")
         depot = UtilisateurRepository(session)
 
@@ -36,8 +28,6 @@ class TestRechercheParEmail:
         assert depot.get_par_email("parti@example.com") is None
 
     def test_email_existe_inclut_les_archives(self, session: Session, creer_compte) -> None:
-        """Réutiliser l'adresse d'un salarié parti violerait l'unicité en base :
-        la vérification doit donc voir aussi les comptes archivés."""
         compte = creer_compte(email="parti2@example.com")
         from datetime import UTC, datetime
 
@@ -59,12 +49,10 @@ class TestGetActif:
 
 class TestPerimetreEnSql:
     def test_filtre_par_manager(self, session: Session, creer_compte) -> None:
-        """Le filtre de portée est appliqué **dans la requête**, jamais après
-        coup en Python (§6.3)."""
         manager = creer_compte(roles=["MANAGER"])
         creer_compte(manager_id=manager.id)
         creer_compte(manager_id=manager.id)
-        creer_compte()  # hors équipe
+        creer_compte()
 
         depot = UtilisateurRepository(session)
         assert depot.compter(manager_id=manager.id) == 2
@@ -107,11 +95,9 @@ class TestChaineHierarchique:
         assert UtilisateurRepository(session).chaine_hierarchique(creer_compte().id) == []
 
     def test_la_remontee_est_bornee(self, session: Session, creer_compte) -> None:
-        """Sur une base déjà corrompue par un cycle, une remontée non bornée ne
-        se terminerait jamais."""
         a = creer_compte()
         b = creer_compte(manager_id=a.id)
-        a.manager_id = b.id  # cycle forcé, la contrainte CHECK ne l'interdit pas
+        a.manager_id = b.id
         session.flush()
 
         chaine = UtilisateurRepository(session).chaine_hierarchique(a.id, profondeur_max=5)
