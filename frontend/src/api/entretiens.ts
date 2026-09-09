@@ -88,8 +88,8 @@ export const entretiensApi = {
     return requete<Entretien>('/entretiens', { methode: 'POST', corps: donnees })
   },
 
-  enregistrerBrouillon(id: string, reponses: ReponseEcrite[]): Promise<Questionnaire> {
-    return requete<Questionnaire>(`/entretiens/${id}/reponses`, {
+  enregistrerBrouillon(id: string, reponses: ReponseEcrite[]): Promise<Entretien> {
+    return requete<Entretien>(`/entretiens/${id}/reponses`, {
       methode: 'PUT',
       corps: { reponses },
     })

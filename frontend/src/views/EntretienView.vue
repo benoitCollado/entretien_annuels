@@ -46,8 +46,12 @@ const peutCommenter = computed(
     ),
 )
 
+// `contenuMasque` signale seulement que les réponses de l'autre partie ne sont
+// pas encore visibles — ce qui est TOUJOURS le cas avant la soumission. Le
+// conditionner ici masquait le bouton pendant toute la phase de préparation,
+// alors que le bandeau juste au-dessus invite à préparer ses réponses.
 const peutSoumettre = computed(
-  () => store.monRole === 'COLLABORATEUR' && store.modifiable && !store.contenuMasque,
+  () => store.monRole === 'COLLABORATEUR' && store.modifiable,
 )
 
 const transitions = computed(() => entretien.value?.transitions_possibles ?? [])

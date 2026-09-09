@@ -140,9 +140,12 @@ export const useQuestionnaireStore = defineStore('questionnaire', () => {
     enregistrement.value = true
     erreur.value = null
     try {
-      questionnaire.value = await entretiensApi.enregistrerBrouillon(entretien.value!.id, reponses)
-
-      entretien.value = await entretiensApi.recuperer(entretien.value!.id)
+      // PUT /entretiens/{id}/reponses répond un EntretienLu, pas un Questionnaire.
+      // L'affecter à `questionnaire` vidait `reponses`, `commentaires` et
+      // `contenu_masque` : le brouillon repartait à zéro et l'affichage devenait
+      // incohérent jusqu'au rechargement de la page.
+      entretien.value = await entretiensApi.enregistrerBrouillon(entretien.value!.id, reponses)
+      questionnaire.value = await entretiensApi.questionnaire(entretien.value.id)
       brouillon.value = mesReponses(monId)
       modifie.value = false
       return true
