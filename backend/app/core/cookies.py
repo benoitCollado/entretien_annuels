@@ -17,6 +17,7 @@ def poser_jeton(reponse: Response, jeton: str, duree_secondes: int) -> None:
         secure=parametres.cookie_est_securise,
         samesite=parametres.cookie_samesite,
         path="/",
+        
     )
 
 
