@@ -158,8 +158,20 @@ jobs:
             export FRONTEND_IMAGE="${{ steps.image.outputs.prefixe }}/frontend"
             docker compose -f compose.yml -f compose.prod.yml pull
             # Migration AVANT le démarrage, dans un conteneur éphémère (§10.2).
-            docker compose -f compose.yml -f compose.prod.yml run --rm migrate
-            docker compose -f compose.yml -f compose.prod.yml up -d --no-build --remove-orphans
+            # `-T` et la redirection sont indispensables : `run` attache stdin
+            # par défaut, or stdin est ici le script lui-même (heredoc envoyé à
+            # `bash -se`). Sans elles, la migration consomme les lignes suivantes,
+            # `up -d` n'est jamais exécuté, et le job se termine en SUCCÈS avec une
+            # stack à moitié démarrée.
+            docker compose -f compose.yml -f compose.prod.yml run --rm -T migrate </dev/null
+            # `--wait` fait échouer l'étape si un conteneur n'atteint pas l'état
+            # « healthy » : les deux images déclarent un HEALTHCHECK. Sans lui, un
+            # conteneur en redémarrage perpétuel passe pour un déploiement réussi.
+            # L'attente est limitée à `api` et `web` — leurs dépendances (db, redis,
+            # migrate) démarrent quand même, mais `migrate` sort en 0 et certaines
+            # versions de Compose comptent cette sortie comme un échec de `--wait`.
+            docker compose -f compose.yml -f compose.prod.yml up -d --no-build --remove-orphans --wait --wait-timeout 180 api web
+            docker compose -f compose.yml -f compose.prod.yml ps
             docker image prune -f
           EOF
 
@@ -201,7 +213,19 @@ jobs:
             export BACKEND_IMAGE="${{ steps.image.outputs.prefixe }}/backend"
             export FRONTEND_IMAGE="${{ steps.image.outputs.prefixe }}/frontend"
             docker compose -f compose.yml -f compose.prod.yml pull
-            docker compose -f compose.yml -f compose.prod.yml run --rm migrate
-            docker compose -f compose.yml -f compose.prod.yml up -d --no-build --remove-orphans
+            # `-T` et la redirection sont indispensables : `run` attache stdin
+            # par défaut, or stdin est ici le script lui-même (heredoc envoyé à
+            # `bash -se`). Sans elles, la migration consomme les lignes suivantes,
+            # `up -d` n'est jamais exécuté, et le job se termine en SUCCÈS avec une
+            # stack à moitié démarrée.
+            docker compose -f compose.yml -f compose.prod.yml run --rm -T migrate </dev/null
+            # `--wait` fait échouer l'étape si un conteneur n'atteint pas l'état
+            # « healthy » : les deux images déclarent un HEALTHCHECK. Sans lui, un
+            # conteneur en redémarrage perpétuel passe pour un déploiement réussi.
+            # L'attente est limitée à `api` et `web` — leurs dépendances (db, redis,
+            # migrate) démarrent quand même, mais `migrate` sort en 0 et certaines
+            # versions de Compose comptent cette sortie comme un échec de `--wait`.
+            docker compose -f compose.yml -f compose.prod.yml up -d --no-build --remove-orphans --wait --wait-timeout 180 api web
+            docker compose -f compose.yml -f compose.prod.yml ps
             docker image prune -f
           EOF
