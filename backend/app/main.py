@@ -28,12 +28,20 @@ def creer_application(parametres: Parametres | None = None) -> FastAPI:
         format="%(asctime)s %(levelname)-8s %(name)s :: %(message)s",
     )
 
+    # En production, le nginx du conteneur `web` expose l'API sous /api/ et
+    # retire ce préfixe avant de relayer. L'application ne le voit donc jamais
+    # dans ses chemins, mais Swagger UI, lui, construit l'URL de la
+    # spécification depuis le navigateur : sans `root_path`, il demande
+    # /openapi.json, reçoit l'index.html du frontend et refuse de s'afficher.
+    racine = "/api" if parametres.est_production else ""
+
     app = FastAPI(
         title=parametres.nom_application,
         version="0.1.0",
         docs_url="/docs",
         redoc_url=None,
         openapi_url="/openapi.json",
+        root_path=racine,
     )
 
     # Enregistré avant CORS : le middleware ajouté en dernier est le plus
