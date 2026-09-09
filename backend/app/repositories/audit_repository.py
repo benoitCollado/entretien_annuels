@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import selectinload
 
 from app.models.audit import JournalAudit
@@ -49,6 +50,37 @@ class AuditRepository(BaseRepository[JournalAudit]):
                 adresse_ip=normaliser_adresse(adresse_ip),
             )
         )
+
+    def journal(
+        self,
+        *,
+        entretien_id: UUID | None = None,
+        utilisateur_id: UUID | None = None,
+        action: str | None = None,
+        limite: int = 50,
+        decalage: int = 0,
+    ) -> tuple[Sequence[JournalAudit], int]:
+        criteres: list[ColumnElement[bool]] = []
+        if entretien_id is not None:
+            criteres.append(JournalAudit.entretien_id == entretien_id)
+        if utilisateur_id is not None:
+            criteres.append(JournalAudit.utilisateur_id == utilisateur_id)
+        if action is not None:
+            criteres.append(JournalAudit.action == action)
+
+        total = (
+            self.session.scalar(select(func.count()).select_from(JournalAudit).where(*criteres))
+            or 0
+        )
+        stmt = (
+            select(JournalAudit)
+            .options(selectinload(JournalAudit.utilisateur))
+            .where(*criteres)
+            .order_by(JournalAudit.horodatage.desc())
+            .limit(limite)
+            .offset(decalage)
+        )
+        return self.session.scalars(stmt).all(), total
 
     def lister_de_l_entretien(self, entretien_id: UUID, limite: int = 100) -> list[JournalAudit]:
         stmt = (

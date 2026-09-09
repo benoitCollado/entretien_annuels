@@ -67,6 +67,22 @@ def exige_permission(code_permission: str) -> Callable[[Utilisateur], Utilisateu
     return dependance
 
 
+def exige_role(code_role: str) -> Callable[[Utilisateur], Utilisateur]:
+    """Contrôle par rôle, pour ce qui ne relève d'aucune permission métier.
+
+    Le journal d'audit n'a pas de permission dédiée dans le référentiel : en
+    créer une imposerait une migration. Le rôle suffit ici, la lecture du
+    journal étant une prérogative d'administration et non un acte métier.
+    """
+
+    def dependance(utilisateur: UtilisateurCourant) -> Utilisateur:
+        if code_role not in utilisateur.codes_roles():
+            raise AccesRefuse(f"Rôle requis : {code_role}")
+        return utilisateur
+
+    return dependance
+
+
 def adresse_client(request: Request) -> str | None:
     return request.client.host if request.client else None
 

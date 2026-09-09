@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import Parametres, obtenir_parametres
 from app.core import gestion_erreurs, protection_csrf
 from app.routers import (
+    audit,
     auth,
     campagnes,
     entretiens,
@@ -57,6 +58,7 @@ def creer_application(parametres: Parametres | None = None) -> FastAPI:
     app.include_router(entretiens.router)
     app.include_router(tableau_bord.router)
     app.include_router(objectifs.router)
+    app.include_router(audit.router)
 
     return app
 
