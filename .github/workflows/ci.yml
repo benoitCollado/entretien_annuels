@@ -111,7 +111,7 @@ jobs:
             --cov=app --cov-report=term --cov-report=xml \
             --junitxml=junit-unit.xml
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: junit-unit-py${{ matrix.python-version }}
@@ -162,7 +162,7 @@ jobs:
       - name: Migrations — lignée, application, réversibilité, dérive
         run: pytest tests/migrations -v --junitxml=junit-migrations.xml
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: junit-migrations
@@ -224,7 +224,7 @@ jobs:
         # configuration plutôt qu'un état transitoire.
         run: pytest tests/integration tests/api --junitxml=junit-integration.xml
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: junit-integration
