@@ -58,7 +58,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           # ⚠️ GHCR exige des noms en minuscules et `github.repository` conserve
           # la casse : cette action normalise, un `docker build -t` manuel non.
